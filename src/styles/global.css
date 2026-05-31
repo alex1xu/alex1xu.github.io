@@ -175,6 +175,36 @@ p { margin-bottom: 1rem; }
   margin-top: 0.1rem;
 }
 
+/* ── Coursework chips ── */
+
+.course-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 1.25rem 0 0.6rem;
+}
+
+.course-tags {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.course {
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  white-space: nowrap;
+}
+
+.course-code {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ── About ── */
 
 .about p {
@@ -184,6 +214,57 @@ p { margin-bottom: 1rem; }
 .about .placeholder {
   color: var(--muted);
   font-style: italic;
+}
+
+/* ── Bio ── */
+
+.bio-part p {
+  font-size: 0.95rem;
+  margin-bottom: 0;
+}
+
+.photo-strip {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1.75rem 0;
+}
+
+.photo-frame {
+  flex: 1;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+
+.photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* placeholder state — remove the `ph` class once a real <img> is added */
+.photo-frame.ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  background: var(--bg-soft);
+}
+
+.photo-frame.ph span {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+@media (max-width: 520px) {
+  .photo-strip { flex-direction: column; }
+  .photo-frame { aspect-ratio: 3 / 2; }
 }
 
 /* ── Blog list ── */
