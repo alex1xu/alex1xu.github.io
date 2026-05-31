@@ -1,0 +1,26 @@
+---
+interface Props {
+  src: string;
+  title?: string;
+}
+const { src, title = 'Embedded video' } = Astro.props;
+
+// Accept YouTube URLs and plain video IDs
+function youtubeId(input: string) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+    /^([A-Za-z0-9_-]{11})$/,
+  ];
+  for (const p of patterns) {
+    const m = input.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+const ytId = youtubeId(src);
+const embedUrl = ytId ? `https://www.youtube.com/embed/${ytId}` : src;
+---
+<div class="video-wrap">
+  <iframe src={embedUrl} title={title} allowfullscreen loading="lazy" />
+</div>
