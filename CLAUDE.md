@@ -50,21 +50,25 @@ Filename = URL slug (`hello-world.mdx` → `/blog/hello-world`). Every post gets
   "items": ["topic or paper", "another"], "blog": "optional-post-slug" }
 ```
 
-- `status`: `"upcoming"` or `"done"` (only two — no "up next"/"planned").
-- `items`: bullet list shown under the entry.
+- `status`: `"upcoming"` or `"done"` (only two).
+- `items`: bullet list of topics/papers for that day.
+- `links` (optional): array of `{"label": "...", "url": "..."}` — shown clickable in list view and in the calendar hover/click popover.
 - `blog` (optional): a post slug to link "Read the write-up →".
-- The List view shows the next 3 upcoming with a "Show more" toggle and an Upcoming/Done filter; the Calendar view renders a month grid. Both derive entirely from this file.
+- `phase` (optional): label like `"Phase 0 · D1"` shown as a subdued line.
+- The List view shows the next **4** upcoming with a "Show more" toggle and Upcoming/Done filter; the Calendar view renders a month grid with click/hover popovers. Both derive entirely from this file.
 
-## Voice & style (for writing/editing blog posts with Alex)
+## Voice & style — blog posts and site content ONLY
 
-Match Alex's voice — don't formalize it. When editing, preserve his wording; tighten and format, don't rewrite. ("do not change except formatting" is the default expectation unless he asks for a rewrite.)
+**Scope:** these rules apply exclusively to writing or editing `.mdx` blog posts and site prose (About, bio). They do NOT apply to code comments, commit messages, PR descriptions, or any other engineering output — those follow the global `~/.claude/CLAUDE.md §1–3` rules (terse, precise, no filler).
+
+When editing blog content: **preserve Alex's wording by default.** Tighten and format; don't rewrite. "Do not change except formatting" is the default unless a rewrite is explicitly requested.
 
 - **First person, casual but substantive.** Conversational, not corporate. Short paragraphs — break up long blocks.
 - **Concrete over abstract.** Specific courses, metrics, dates, paper titles + arXiv IDs. Numbers carry the point (e.g. "85% parity", "1.2k RPS", "10×"). No vague hype.
-- **Occasional dry humor / asides** in parentheses are on-brand ("(I only liked playing video games haha)"). Don't sand them off.
+- **Dry humor and parenthetical asides are on-brand** — ("(I only liked playing video games haha)"). Don't sand them off.
 - **Technical depth for a systems/ML audience** — kernels, distributed training, inference, compilers, hardware. Assume a competent reader; explain tradeoffs and design decisions, not basics.
-- **No AI-slop**: no "In today's fast-paced world", no hedging filler, no restating the heading, no bullet lists where prose reads better. Cut any sentence that carries no information.
-- **Design stays minimal/uncrowded** — Alex actively trims clutter. Prefer fewer, denser elements; short blocks; whitespace.
+- **No AI-slop.** No "In today's fast-paced world", no hedging filler, no restating the heading, no bullet lists where prose reads better. Cut any sentence that carries no information.
+- **Minimal/uncrowded.** Alex actively trims clutter. Prefer fewer, denser elements; short blocks; whitespace.
 
 ## Design principles
 
