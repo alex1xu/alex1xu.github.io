@@ -23,12 +23,13 @@ function formatDate(d: string) {
   <section class="section">
     <p class="section-title">Posts</p>
     {posts.length > 0 ? (
-      <ul class="post-list">
+      <ul class="post-list" id="post-list">
         {posts.map((post) => (
-          <li class="post-item">
+          <li class="post-item" data-slug={post.id}>
             <span class="post-date">{formatDate(post.data.date)}</span>
             <a href={`/blog/${post.id}`} class="post-title">{post.data.title}</a>
-            <ShareButton url={`/blog/${post.id}`} label="Copy link" />
+            <span class="unread-dot" hidden aria-label="Unread"></span>
+            <ShareButton url={`/blog/${post.id}`} />
           </li>
         ))}
       </ul>
@@ -37,3 +38,17 @@ function formatDate(d: string) {
     )}
   </section>
 </Base>
+
+<script>
+  // Mark unread posts with a dot. Runs client-side so it's per-device.
+  try {
+    const read: string[] = JSON.parse(localStorage.getItem('read_posts') || '[]');
+    document.querySelectorAll<HTMLElement>('#post-list .post-item').forEach(item => {
+      const slug = item.dataset.slug ?? '';
+      if (!read.includes(slug)) {
+        const dot = item.querySelector<HTMLElement>('.unread-dot');
+        if (dot) dot.hidden = false;
+      }
+    });
+  } catch {}
+</script>

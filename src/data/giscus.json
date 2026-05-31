@@ -1,0 +1,10 @@
+{
+  "repo": "alex1xu/me",
+  "repoId": "FILL_IN_FROM_GISCUS_APP",
+  "category": "Blog",
+  "categoryId": "FILL_IN_FROM_GISCUS_APP",
+  "mapping": "pathname",
+  "reactionsEnabled": "1",
+  "emitMetadata": "0",
+  "theme": "light"
+}

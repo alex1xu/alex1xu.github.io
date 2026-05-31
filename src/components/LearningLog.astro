@@ -2,48 +2,46 @@
 import learning from '../data/learning.json';
 
 type Status = 'done' | 'upcoming';
+interface Link { label: string; url: string; }
 interface Entry {
-  date: string;
-  title: string;
-  items: string[];
-  status: Status;
-  blog?: string;
+  date: string; title: string; items: string[];
+  status: Status; phase?: string; links?: Link[]; blog?: string;
 }
-const entriesData = learning as Entry[];
+const entries = learning as Entry[];
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-const fmt = (date: string) => {
-  const [, m, d] = date.split('-').map(Number);
-  return `${MONTHS[m - 1]} ${d}`;
-};
+const fmt = (d: string) => { const [,m,day] = d.split('-').map(Number); return `${MONTHS[m-1]} ${day}`; };
 
-// List order: upcoming soonest-first, then done most-recent-first.
-const upcoming = entriesData.filter((e) => e.status === 'upcoming').sort((a, b) => (a.date < b.date ? -1 : 1));
-const done = entriesData.filter((e) => e.status === 'done').sort((a, b) => (a.date > b.date ? -1 : 1));
+const upcoming = entries.filter(e => e.status === 'upcoming').sort((a,b) => a.date < b.date ? -1 : 1);
+const done     = entries.filter(e => e.status === 'done').sort((a,b) => a.date > b.date ? -1 : 1);
 const listEntries = [...upcoming, ...done];
 
-// Calendar: one grid per month spanned by entries.
+// Calendar
 const byDate = new Map<string, Entry[]>();
-for (const e of entriesData) {
-  const list = byDate.get(e.date) ?? [];
-  list.push(e);
-  byDate.set(e.date, list);
-}
-const monthKeys = [...new Set(entriesData.map((e) => e.date.slice(0, 7)))].sort();
-const months = monthKeys.map((key) => {
-  const [y, m] = key.split('-').map(Number);
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < new Date(y, m - 1, 1).getDay(); i++) cells.push(null);
-  for (let d = 1; d <= new Date(y, m, 0).getDate(); d++) cells.push(d);
-  return { key, label: `${MONTH_FULL[m - 1]} ${y}`, cells };
+for (const e of entries) { const l = byDate.get(e.date) ?? []; l.push(e); byDate.set(e.date, l); }
+const monthKeys = [...new Set(entries.map(e => e.date.slice(0,7)))].sort();
+const months = monthKeys.map(key => {
+  const [y,m] = key.split('-').map(Number);
+  const cells: (number|null)[] = [];
+  for (let i = 0; i < new Date(y,m-1,1).getDay(); i++) cells.push(null);
+  for (let d = 1; d <= new Date(y,m,0).getDate(); d++) cells.push(d);
+  return { key, label: `${MONTH_FULL[m-1]} ${y}`, cells };
 });
-const cellDate = (k: string, day: number) => `${k}-${String(day).padStart(2, '0')}`;
-const cellStatus = (es: Entry[]): Status => (es.some((e) => e.status === 'upcoming') ? 'upcoming' : 'done');
+const cellDate = (k: string, d: number) => `${k}-${String(d).padStart(2,'0')}`;
+const cellStatus = (es: Entry[]): Status => es.some(e => e.status === 'upcoming') ? 'upcoming' : 'done';
+
+// Serialise entry data for popover (strip to what JS needs)
+const popoverData = Object.fromEntries(
+  [...byDate.entries()].map(([date, es]) => [
+    date,
+    es.map(e => ({ title: e.title, phase: e.phase ?? '', links: e.links ?? [] }))
+  ])
+);
 ---
-<div class="log" data-initial="3">
+<div class="log" data-initial="4" data-popover={JSON.stringify(popoverData)}>
   <div class="log-bar">
     <div class="log-views">
       <button type="button" class="log-view is-active" data-view="list">List</button>
@@ -62,7 +60,7 @@ const cellStatus = (es: Entry[]): Status => (es.some((e) => e.status === 'upcomi
   <!-- List view -->
   <div class="log-panel" data-panel="list">
     <ol class="log-list">
-      {listEntries.map((e) => (
+      {listEntries.map(e => (
         <li class="log-entry" data-group={e.status}>
           <div class="log-date">{fmt(e.date)}</div>
           <div class="log-body">
@@ -70,9 +68,14 @@ const cellStatus = (es: Entry[]): Status => (es.some((e) => e.status === 'upcomi
               <i class:list={['dot', e.status]}></i>
               <span class="log-title">{e.title}</span>
             </div>
-            <ul class="log-items">
-              {e.items.map((it) => <li>{it}</li>)}
-            </ul>
+            {e.phase && <div class="log-phase">{e.phase}</div>}
+            {e.links && e.links.length > 0 && (
+              <ul class="log-links">
+                {e.links.map(l => (
+                  <li><a href={l.url} target="_blank" rel="noopener noreferrer">{l.label}</a></li>
+                ))}
+              </ul>
+            )}
             {e.blog && <a class="log-link" href={`/blog/${e.blog}`}>Read the write-up →</a>}
           </div>
         </li>
@@ -83,83 +86,148 @@ const cellStatus = (es: Entry[]): Status => (es.some((e) => e.status === 'upcomi
 
   <!-- Calendar view -->
   <div class="log-panel" data-panel="calendar" hidden>
-    {months.map((mo) => (
+    {months.map(mo => (
       <div class="cal-block">
         <div class="cal-label">{mo.label}</div>
         <div class="cal-grid">
-          {WEEKDAYS.map((w) => <div class="cal-weekday">{w}</div>)}
-          {mo.cells.map((day) => {
+          {WEEKDAYS.map(w => <div class="cal-weekday">{w}</div>)}
+          {mo.cells.map(day => {
             if (day === null) return <div class="cal-cell empty"></div>;
             const es = byDate.get(cellDate(mo.key, day));
             if (!es) return <div class="cal-cell"><span class="day-num">{day}</span></div>;
             const s = cellStatus(es);
+            const dateKey = cellDate(mo.key, day);
             return (
-              <div class={`cal-cell has-entry s-${s}`} title={es.map((e) => e.title).join(' · ')}>
+              <div class={`cal-cell has-entry s-${s}`} data-date={dateKey}
+                   tabindex="0" role="button" aria-label={es.map(e=>e.title).join(', ')}>
                 <span class="day-num"><i class:list={['dot', s]}></i>{day}</span>
-                <span class="cell-label">{es.map((e) => e.title).join(' · ')}</span>
+                <span class="cell-label">{es.map(e=>e.title).join(' · ')}</span>
               </div>
             );
           })}
         </div>
       </div>
     ))}
+    <!-- popover element (hidden, positioned by JS) -->
+    <div class="cal-popover" hidden aria-live="polite"></div>
   </div>
 </div>
 
 <script>
-  document.querySelectorAll<HTMLElement>('.log').forEach((log) => {
-    const initial = Number(log.dataset.initial) || 3;
-    const entries = Array.from(log.querySelectorAll<HTMLElement>('.log-entry'));
-    const viewBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-view'));
-    const filterBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-tab'));
-    const panels = Array.from(log.querySelectorAll<HTMLElement>('.log-panel'));
-    const filters = log.querySelector<HTMLElement>('.log-filters')!;
-    const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
-    let view = 'list';
-    let filter = 'upcoming';
-    let expanded = false;
+document.querySelectorAll<HTMLElement>('.log').forEach(log => {
+  const initial = Number(log.dataset.initial) || 4;
+  const entries = Array.from(log.querySelectorAll<HTMLElement>('.log-entry'));
+  const viewBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-view'));
+  const filterBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-tab'));
+  const panels = Array.from(log.querySelectorAll<HTMLElement>('.log-panel'));
+  const filters = log.querySelector<HTMLElement>('.log-filters')!;
+  const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
+  const popoverEl = log.querySelector<HTMLElement>('.cal-popover')!;
+  const popoverData: Record<string, Array<{title:string; phase:string; links:{label:string;url:string}[]}>> =
+    JSON.parse(log.dataset.popover || '{}');
 
-    function renderList() {
-      let shown = 0;
-      let total = 0;
-      for (const el of entries) {
-        const match = el.dataset.group === filter;
-        if (match) total++;
-        const visible = match && (expanded || shown < initial);
-        el.hidden = !visible;
-        if (visible) shown++;
-      }
-      const remaining = total - Math.min(total, initial);
-      moreBtn.hidden = !(remaining > 0 && !expanded);
-      if (!moreBtn.hidden) moreBtn.textContent = `Show ${remaining} more`;
-      filterBtns.forEach((t) => t.classList.toggle('is-active', t.dataset.filter === filter));
+  let view = 'list', filter = 'upcoming', expanded = false;
+
+  // ── List render ──────────────────────────────────────────
+  function renderList() {
+    let shown = 0, total = 0;
+    for (const el of entries) {
+      const match = el.dataset.group === filter;
+      if (match) total++;
+      const visible = match && (expanded || shown < initial);
+      el.hidden = !visible;
+      if (visible) shown++;
     }
+    const remaining = total - Math.min(total, initial);
+    moreBtn.hidden = !(remaining > 0 && !expanded);
+    if (!moreBtn.hidden) moreBtn.textContent = `Show ${remaining} more`;
+    filterBtns.forEach(t => t.classList.toggle('is-active', t.dataset.filter === filter));
+  }
 
-    function renderView() {
-      panels.forEach((p) => (p.hidden = p.dataset.panel !== view));
-      viewBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.view === view));
-      filters.style.display = view === 'list' ? '' : 'none';
-    }
+  // ── View toggle ─────────────────────────────────────────
+  function renderView() {
+    panels.forEach(p => (p.hidden = p.dataset.panel !== view));
+    viewBtns.forEach(b => b.classList.toggle('is-active', b.dataset.view === view));
+    filters.style.display = view === 'list' ? '' : 'none';
+    if (view !== 'calendar') closePopover();
+  }
 
-    viewBtns.forEach((b) =>
-      b.addEventListener('click', () => {
-        view = b.dataset.view!;
-        renderView();
-      })
-    );
-    filterBtns.forEach((t) =>
-      t.addEventListener('click', () => {
-        filter = t.dataset.filter!;
-        expanded = false;
-        renderList();
-      })
-    );
-    moreBtn.addEventListener('click', () => {
-      expanded = true;
-      renderList();
-    });
+  // ── Calendar popover ─────────────────────────────────────
+  let openCell: HTMLElement | null = null;
 
-    renderView();
-    renderList();
+  function buildPopoverHTML(date: string) {
+    const items = popoverData[date];
+    if (!items || items.length === 0) return '';
+    return items.map(item => {
+      const linksHtml = item.links.length
+        ? `<ul class="pop-links">${item.links.map(l =>
+            `<li><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}</a></li>`
+          ).join('')}</ul>`
+        : '';
+      return `<div class="pop-item"><strong>${item.title}</strong>${item.phase ? `<div class="pop-phase">${item.phase}</div>` : ''}${linksHtml}</div>`;
+    }).join('');
+  }
+
+  function openPopover(cell: HTMLElement) {
+    const date = cell.dataset.date;
+    if (!date) return;
+    const html = buildPopoverHTML(date);
+    if (!html) return;
+    popoverEl.innerHTML = html;
+    popoverEl.hidden = false;
+    cell.classList.add('popped');
+    openCell = cell;
+    // Position below the cell
+    const cr = cell.getBoundingClientRect();
+    const lr = log.getBoundingClientRect();
+    const top = cr.bottom - lr.top + 6;
+    const left = Math.min(cr.left - lr.left, lr.width - 280);
+    popoverEl.style.top = `${top}px`;
+    popoverEl.style.left = `${Math.max(0, left)}px`;
+  }
+
+  function closePopover() {
+    popoverEl.hidden = true;
+    popoverEl.innerHTML = '';
+    if (openCell) { openCell.classList.remove('popped'); openCell = null; }
+  }
+
+  // Click on cell: toggle popover
+  log.addEventListener('click', e => {
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.cal-cell[data-date]');
+    if (!cell) { if (!popoverEl.contains(e.target as Node)) closePopover(); return; }
+    if (openCell === cell) { closePopover(); return; }
+    closePopover();
+    openPopover(cell);
   });
+
+  // Keyboard: Enter/Space opens, Escape closes
+  log.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closePopover(); return; }
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.cal-cell[data-date]');
+    if (cell && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openCell === cell ? closePopover() : (closePopover(), openPopover(cell)); }
+  });
+
+  // Hover: open on enter, close on leave (skip on touch)
+  let isTouchDevice = false;
+  window.addEventListener('touchstart', () => { isTouchDevice = true; }, { once: true });
+  log.addEventListener('mouseenter', e => {
+    if (isTouchDevice) return;
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.cal-cell[data-date]');
+    if (cell && cell !== openCell) { closePopover(); openPopover(cell); }
+  }, true);
+  log.addEventListener('mouseleave', e => {
+    if (isTouchDevice) return;
+    const to = e.relatedTarget as HTMLElement | null;
+    if (to && (log.contains(to))) return;
+    closePopover();
+  }, true);
+
+  // ── Wire up ──────────────────────────────────────────────
+  viewBtns.forEach(b => b.addEventListener('click', () => { view = b.dataset.view!; renderView(); }));
+  filterBtns.forEach(t => t.addEventListener('click', () => { filter = t.dataset.filter!; expanded = false; renderList(); }));
+  moreBtn.addEventListener('click', () => { expanded = true; renderList(); });
+  renderView();
+  renderList();
+});
 </script>

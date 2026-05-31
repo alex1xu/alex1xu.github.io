@@ -2,6 +2,7 @@
 import Base from './Base.astro';
 import Hero from '../components/Hero.astro';
 import ShareButton from '../components/ShareButton.astro';
+import giscus from '../data/giscus.json';
 
 interface Props {
   title: string;
@@ -11,22 +12,55 @@ interface Props {
 }
 
 const { title, date, description, tags } = Astro.props;
+const slug = Astro.url.pathname.replace(/\/$/, '').split('/').pop() ?? '';
 const formatted = new Date(date).toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric',
 });
+const giscusReady = !giscus.repoId.startsWith('FILL');
 ---
 <Base title={title} description={description}>
   <Hero page="blog" />
-  <a href="/blog" class="back-link">← All writing</a>
+  <a href="/blog" class="back-link">← Blog</a>
   <article class="prose">
     <h1>{title}</h1>
     <div class="post-meta">
       <span>{formatted}</span>
-      {tags && tags.length > 0 && (
-        <span>{tags.join(', ')}</span>
-      )}
-      <ShareButton url={Astro.url.pathname} label="Copy link" />
+      {tags && tags.length > 0 && <span>{tags.join(', ')}</span>}
+      <ShareButton url={Astro.url.pathname} />
     </div>
     <slot />
   </article>
+
+  {giscusReady && (
+    <div class="giscus-wrap">
+      <script is:inline
+        src="https://giscus.app/client.js"
+        data-repo={giscus.repo}
+        data-repo-id={giscus.repoId}
+        data-category={giscus.category}
+        data-category-id={giscus.categoryId}
+        data-mapping={giscus.mapping}
+        data-strict="0"
+        data-reactions-enabled={giscus.reactionsEnabled}
+        data-emit-metadata={giscus.emitMetadata}
+        data-input-position="top"
+        data-theme={giscus.theme}
+        data-lang="en"
+        crossorigin="anonymous"
+        async>
+      </script>
+    </div>
+  )}
 </Base>
+
+<!-- mark post as read in localStorage -->
+<script define:vars={{ slug }}>
+  try {
+    const key = 'read_posts';
+    const read = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!read.includes(slug)) {
+      read.push(slug);
+      localStorage.setItem(key, JSON.stringify(read));
+    }
+  } catch {}
+</script>
