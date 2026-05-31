@@ -2,11 +2,19 @@
 interface Props {
   /** absolute or root-relative URL to copy */
   url: string;
-  label?: string;
 }
-const { url, label = 'Copy link' } = Astro.props;
+const { url } = Astro.props;
 ---
-<button type="button" class="share-btn" data-copy={url} data-label={label}>{label}</button>
+<button type="button" class="share-btn" data-copy={url} aria-label="Copy link" title="Copy link">
+  <svg class="icon-share" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+    <path d="M12 3v12" />
+    <path d="M8 7l4-4 4 4" />
+  </svg>
+  <svg class="icon-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+</button>
 
 <script>
   const w = window as unknown as { __shareInit?: boolean };
@@ -27,12 +35,19 @@ const { url, label = 'Copy link' } = Astro.props;
         document.execCommand('copy');
         ta.remove();
       }
-      const label = btn.getAttribute('data-label') || 'Copy link';
-      btn.textContent = 'Copied!';
+      const share = btn.querySelector<SVGElement>('.icon-share');
+      const check = btn.querySelector<SVGElement>('.icon-check');
       btn.classList.add('copied');
+      if (share && check) {
+        share.hidden = true;
+        check.hidden = false;
+      }
       setTimeout(() => {
-        btn.textContent = label;
         btn.classList.remove('copied');
+        if (share && check) {
+          share.hidden = false;
+          check.hidden = true;
+        }
       }, 1500);
     });
   }

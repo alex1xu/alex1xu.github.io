@@ -1,68 +1,125 @@
 ---
-import { learning, type LearningEntry, type Status } from '../data/learning';
+import learning from '../data/learning.json';
+
+type Status = 'done' | 'upcoming';
+interface Entry {
+  date: string;
+  title: string;
+  items: string[];
+  status: Status;
+  blog?: string;
+}
+const entriesData = learning as Entry[];
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function fmt(date: string) {
+const fmt = (date: string) => {
   const [, m, d] = date.split('-').map(Number);
   return `${MONTHS[m - 1]} ${d}`;
-}
-function statusLabel(s: Status) {
-  return s === 'done' ? 'Done' : s === 'next' ? 'Up next' : 'Planned';
-}
+};
 
-const group = (e: LearningEntry) => (e.status === 'done' ? 'past' : 'upcoming');
+// List order: upcoming soonest-first, then done most-recent-first.
+const upcoming = entriesData.filter((e) => e.status === 'upcoming').sort((a, b) => (a.date < b.date ? -1 : 1));
+const done = entriesData.filter((e) => e.status === 'done').sort((a, b) => (a.date > b.date ? -1 : 1));
+const listEntries = [...upcoming, ...done];
 
-// Upcoming soonest-first; past most-recent-first. Rendered contiguously so
-// per-group DOM order is already correct when the filter hides the other group.
-const upcoming = learning.filter((e) => group(e) === 'upcoming').sort((a, b) => (a.date < b.date ? -1 : 1));
-const past = learning.filter((e) => group(e) === 'past').sort((a, b) => (a.date > b.date ? -1 : 1));
-const entries = [...upcoming, ...past];
+// Calendar: one grid per month spanned by entries.
+const byDate = new Map<string, Entry[]>();
+for (const e of entriesData) {
+  const list = byDate.get(e.date) ?? [];
+  list.push(e);
+  byDate.set(e.date, list);
+}
+const monthKeys = [...new Set(entriesData.map((e) => e.date.slice(0, 7)))].sort();
+const months = monthKeys.map((key) => {
+  const [y, m] = key.split('-').map(Number);
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < new Date(y, m - 1, 1).getDay(); i++) cells.push(null);
+  for (let d = 1; d <= new Date(y, m, 0).getDate(); d++) cells.push(d);
+  return { key, label: `${MONTH_FULL[m - 1]} ${y}`, cells };
+});
+const cellDate = (k: string, day: number) => `${k}-${String(day).padStart(2, '0')}`;
+const cellStatus = (es: Entry[]): Status => (es.some((e) => e.status === 'upcoming') ? 'upcoming' : 'done');
 ---
-<div class="log" data-initial="4">
+<div class="log" data-initial="3">
   <div class="log-bar">
-    <div class="log-tabs">
+    <div class="log-views">
+      <button type="button" class="log-view is-active" data-view="list">List</button>
+      <button type="button" class="log-view" data-view="calendar">Calendar</button>
+    </div>
+    <div class="log-filters">
       <button type="button" class="log-tab is-active" data-filter="upcoming">Upcoming</button>
-      <button type="button" class="log-tab" data-filter="past">Past</button>
+      <button type="button" class="log-tab" data-filter="done">Done</button>
     </div>
     <div class="log-legend">
-      <span><i class="dot next"></i>Up next</span>
-      <span><i class="dot planned"></i>Planned</span>
+      <span><i class="dot upcoming"></i>Upcoming</span>
       <span><i class="dot done"></i>Done</span>
     </div>
   </div>
 
-  <ol class="log-list">
-    {entries.map((e) => (
-      <li class="log-entry" data-group={group(e)}>
-        <div class="log-date">{fmt(e.date)}</div>
-        <div class="log-body">
-          <div class="log-head">
-            <i class:list={['dot', e.status]} title={statusLabel(e.status)}></i>
-            <span class="log-title">{e.title}</span>
+  <!-- List view -->
+  <div class="log-panel" data-panel="list">
+    <ol class="log-list">
+      {listEntries.map((e) => (
+        <li class="log-entry" data-group={e.status}>
+          <div class="log-date">{fmt(e.date)}</div>
+          <div class="log-body">
+            <div class="log-head">
+              <i class:list={['dot', e.status]}></i>
+              <span class="log-title">{e.title}</span>
+            </div>
+            <ul class="log-items">
+              {e.items.map((it) => <li>{it}</li>)}
+            </ul>
+            {e.blog && <a class="log-link" href={`/blog/${e.blog}`}>Read the write-up →</a>}
           </div>
-          <ul class="log-items">
-            {e.items.map((it) => <li>{it}</li>)}
-          </ul>
-          {e.blog && <a class="log-link" href={`/blog/${e.blog}`}>Read the write-up →</a>}
-        </div>
-      </li>
-    ))}
-  </ol>
+        </li>
+      ))}
+    </ol>
+    <button type="button" class="log-more" hidden>Show more</button>
+  </div>
 
-  <button type="button" class="log-more" hidden>Show more</button>
+  <!-- Calendar view -->
+  <div class="log-panel" data-panel="calendar" hidden>
+    {months.map((mo) => (
+      <div class="cal-block">
+        <div class="cal-label">{mo.label}</div>
+        <div class="cal-grid">
+          {WEEKDAYS.map((w) => <div class="cal-weekday">{w}</div>)}
+          {mo.cells.map((day) => {
+            if (day === null) return <div class="cal-cell empty"></div>;
+            const es = byDate.get(cellDate(mo.key, day));
+            if (!es) return <div class="cal-cell"><span class="day-num">{day}</span></div>;
+            const s = cellStatus(es);
+            return (
+              <div class={`cal-cell has-entry s-${s}`} title={es.map((e) => e.title).join(' · ')}>
+                <span class="day-num"><i class:list={['dot', s]}></i>{day}</span>
+                <span class="cell-label">{es.map((e) => e.title).join(' · ')}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ))}
+  </div>
 </div>
 
 <script>
   document.querySelectorAll<HTMLElement>('.log').forEach((log) => {
-    const initial = Number(log.dataset.initial) || 4;
+    const initial = Number(log.dataset.initial) || 3;
     const entries = Array.from(log.querySelectorAll<HTMLElement>('.log-entry'));
-    const tabs = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-tab'));
+    const viewBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-view'));
+    const filterBtns = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-tab'));
+    const panels = Array.from(log.querySelectorAll<HTMLElement>('.log-panel'));
+    const filters = log.querySelector<HTMLElement>('.log-filters')!;
     const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
+    let view = 'list';
     let filter = 'upcoming';
     let expanded = false;
 
-    function render() {
+    function renderList() {
       let shown = 0;
       let total = 0;
       for (const el of entries) {
@@ -73,26 +130,36 @@ const entries = [...upcoming, ...past];
         if (visible) shown++;
       }
       const remaining = total - Math.min(total, initial);
-      if (remaining > 0 && !expanded) {
-        moreBtn.hidden = false;
-        moreBtn.textContent = `Show ${remaining} more`;
-      } else {
-        moreBtn.hidden = true;
-      }
-      tabs.forEach((t) => t.classList.toggle('is-active', t.dataset.filter === filter));
+      moreBtn.hidden = !(remaining > 0 && !expanded);
+      if (!moreBtn.hidden) moreBtn.textContent = `Show ${remaining} more`;
+      filterBtns.forEach((t) => t.classList.toggle('is-active', t.dataset.filter === filter));
     }
 
-    tabs.forEach((t) =>
+    function renderView() {
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== view));
+      viewBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.view === view));
+      filters.style.display = view === 'list' ? '' : 'none';
+    }
+
+    viewBtns.forEach((b) =>
+      b.addEventListener('click', () => {
+        view = b.dataset.view!;
+        renderView();
+      })
+    );
+    filterBtns.forEach((t) =>
       t.addEventListener('click', () => {
         filter = t.dataset.filter!;
         expanded = false;
-        render();
+        renderList();
       })
     );
     moreBtn.addEventListener('click', () => {
       expanded = true;
-      render();
+      renderList();
     });
-    render();
+
+    renderView();
+    renderList();
   });
 </script>
