@@ -1,40 +1,51 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getCollection } from 'astro:content';
 
-const posts = (await getCollection('blog'))
-  .sort((a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf())
-  .slice(0, 5);
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
+const experience = [
+  {
+    role: 'Software Engineer',
+    org: 'Databricks',
+    meta: 'Present',
+    note: 'ML systems — distributed training & inference (GRPO, Trainium, 3D parallelism).',
+  },
+  {
+    role: 'Research Intern',
+    org: 'Albert Einstein College of Medicine',
+    meta: 'May 2022 – Sep 2024',
+    note: '',
+  },
+];
 ---
 <Base>
-  <section class="intro">
-    <h1>Alex Xu</h1>
-    <p>
-      Software engineer at Databricks. I work on distributed systems and storage.
-      This is where I write about things I'm learning.
-    </p>
-    <div class="intro-links">
-      <a href="https://github.com/alex1xu">GitHub</a>
-      <a href="https://linkedin.com/in/alex1xu">LinkedIn</a>
-      <a href="mailto:a.xu@databricks.com">Email</a>
+  <section class="hero">
+    <h1 class="hero-name">Alexander Xu</h1>
+    <div class="hero-links">
+      <a href="https://www.linkedin.com/in/alexanderyxu/" target="_blank" rel="me noopener">LinkedIn</a>
+      <a href="https://github.com/alex1xu" target="_blank" rel="me noopener">GitHub</a>
+      <a href="https://x.com/alex1xu" target="_blank" rel="me noopener">Twitter</a>
     </div>
   </section>
 
-  {posts.length > 0 && (
-    <section>
-      <p class="section-title">Recent writing</p>
-      <ul class="post-list">
-        {posts.map(post => (
-          <li class="post-item">
-            <span class="post-date">{formatDate(post.data.date)}</span>
-            <a href={`/blog/${post.id}`} class="post-title">{post.data.title}</a>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )}
+  <section class="section">
+    <p class="section-title">Experience</p>
+    <ul class="exp-list">
+      {experience.map((e) => (
+        <li class="exp-item">
+          <span class="exp-role">{e.role} · <span class="exp-org">{e.org}</span></span>
+          <span class="exp-meta">{e.meta}</span>
+          {e.note && <span class="exp-note">{e.note}</span>}
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section class="section about">
+    <p class="section-title">About Me</p>
+    <p class="placeholder">Coming soon.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-title">Writing</p>
+    <p><a href="/blog">Technical blog &amp; learning log →</a></p>
+  </section>
 </Base>
