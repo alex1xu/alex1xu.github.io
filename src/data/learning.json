@@ -133,7 +133,7 @@
   },
   {
     "date": "2026-06-08",
-    "title": "Consolidate Phase 0 — ship gpu-kernels-from-scratch",
+    "title": "gpu-kernels-from-scratch",
     "status": "upcoming",
     "phase": "Phase 0 · D6",
     "items": [
