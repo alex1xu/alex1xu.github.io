@@ -41,7 +41,7 @@ const popoverData = Object.fromEntries(
   ])
 );
 ---
-<div class="log" data-initial="4" data-popover={JSON.stringify(popoverData)}>
+<div class="log" data-initial="5" data-popover={JSON.stringify(popoverData)}>
   <div class="log-bar">
     <div class="log-views">
       <button type="button" class="log-view is-active" data-view="list">List</button>
@@ -130,16 +130,15 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
 
   // ── List render ──────────────────────────────────────────
   function renderList() {
-    let shown = 0, total = 0;
-    for (const el of entries) {
-      const match = el.dataset.group === filter;
-      if (match) total++;
-      const visible = match && (expanded || shown < initial);
-      el.hidden = !visible;
-      if (visible) shown++;
-    }
-    const remaining = total - Math.min(total, initial);
-    moreBtn.hidden = !(remaining > 0 && !expanded);
+    // Separate matching from non-matching first, then decide visibility.
+    const matching = entries.filter(el => el.dataset.group === filter);
+    const visible  = expanded ? matching : matching.slice(0, initial);
+    const visibleSet = new Set(visible);
+
+    entries.forEach(el => { el.hidden = !visibleSet.has(el); });
+
+    const remaining = matching.length - visible.length;
+    moreBtn.hidden = remaining <= 0;
     if (!moreBtn.hidden) moreBtn.textContent = `Show ${remaining} more`;
     filterBtns.forEach(t => t.classList.toggle('is-active', t.dataset.filter === filter));
   }

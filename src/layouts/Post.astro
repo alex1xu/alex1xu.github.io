@@ -16,7 +16,7 @@ const slug = Astro.url.pathname.replace(/\/$/, '').split('/').pop() ?? '';
 const formatted = new Date(date).toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric',
 });
-const giscusReady = !giscus.repoId.startsWith('FILL');
+const giscusReady = !giscus.repoId.startsWith('FILL') && !giscus.categoryId.startsWith('FILL');
 ---
 <Base title={title} description={description}>
   <Hero page="blog" />
@@ -43,7 +43,7 @@ const giscusReady = !giscus.repoId.startsWith('FILL');
         data-strict="0"
         data-reactions-enabled={giscus.reactionsEnabled}
         data-emit-metadata={giscus.emitMetadata}
-        data-input-position="top"
+        data-input-position={giscus.inputPosition}
         data-theme={giscus.theme}
         data-lang="en"
         crossorigin="anonymous"

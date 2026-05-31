@@ -1,10 +1,11 @@
 {
-  "repo": "alex1xu/me",
-  "repoId": "FILL_IN_FROM_GISCUS_APP",
-  "category": "Blog",
-  "categoryId": "FILL_IN_FROM_GISCUS_APP",
+  "repo": "alex1xu/alex1xu.github.io",
+  "repoId": "R_kgDOSsnhLg",
+  "category": "FILL_IN_CATEGORY_NAME",
+  "categoryId": "FILL_IN_CATEGORY_ID",
   "mapping": "pathname",
   "reactionsEnabled": "1",
   "emitMetadata": "0",
-  "theme": "light"
+  "inputPosition": "bottom",
+  "theme": "https://alex1xu.github.io/giscus-reactions.css"
 }

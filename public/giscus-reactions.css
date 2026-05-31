@@ -1,0 +1,35 @@
+/*
+  Custom giscus theme: reactions bar only, warm light palette.
+  Imports giscus's own light theme then hides the comment thread and input.
+*/
+@import url("https://giscus.app/themes/light.css");
+
+/* Hide the comment thread and new-comment input */
+.gsc-comment-box,
+.gsc-comments,
+.gsc-header { display: none !important; }
+
+/* Tighten up now that only the reactions bar remains */
+.gsc-main { padding-bottom: 0 !important; }
+.gsc-reactions { margin-bottom: 0 !important; }
+
+/* Warm palette overrides */
+:root {
+  --color-canvas-default: #faf5ee;
+  --color-canvas-subtle: #f3ebdf;
+  --color-border-default: #e7ddcd;
+  --color-border-muted: #e7ddcd;
+  --color-fg-default: #322b25;
+  --color-fg-muted: #8a7d6d;
+  --color-accent-fg: #c06a3f;
+  --color-accent-emphasis: #c06a3f;
+  --color-btn-bg: #f3ebdf;
+  --color-btn-border: #e7ddcd;
+  --color-btn-hover-bg: #ecd3c1;
+  --color-btn-primary-text: #fff;
+  --color-btn-primary-bg: #c06a3f;
+  --color-btn-primary-border: #c06a3f;
+  --color-btn-primary-hover-bg: #a55234;
+  --color-social-reaction-bg-hover: #ecd3c1;
+  --color-social-reaction-bg-reacted-hover: #ecd3c1;
+}
