@@ -5,9 +5,8 @@ interface Props {
   title?: string;
   description?: string;
 }
-const { title, description = 'Personal website and blog.' } = Astro.props;
-const pageTitle = title ? `${title} — Alex Xu` : 'Alex Xu';
-const currentPath = Astro.url.pathname;
+const { title, description = 'Alexander Xu — personal site and technical blog.' } = Astro.props;
+const pageTitle = title ? `${title} — Alexander Xu` : 'Alexander Xu';
 ---
 <!doctype html>
 <html lang="en">
@@ -15,29 +14,21 @@ const currentPath = Astro.url.pathname;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={description} />
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="/favicon.svg" />
     <title>{pageTitle}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a href="/" class="site-name">Alex Xu</a>
-        <nav>
-          <a href="/blog" class:list={[{ active: currentPath.startsWith('/blog') }]}>writing</a>
-          <a href="/about" class:list={[{ active: currentPath === '/about' }]}>about</a>
-        </nav>
-      </div>
-    </header>
-
     <main>
       <slot />
     </main>
 
     <footer class="site-footer">
-      <span>© {new Date().getFullYear()} Alex Xu</span>
+      <a href="/">home</a>
+      <a href="/blog">blog</a>
+      <span>© {new Date().getFullYear()} Alexander Xu</span>
     </footer>
   </body>
 </html>
