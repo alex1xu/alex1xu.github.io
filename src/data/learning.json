@@ -82,7 +82,7 @@
   },
   {
     "date": "2026-06-04",
-    "title": "Profiling deep-dive (Nsight + torch profiler)",
+    "title": "Profiling (Nsight + torch profiler)",
     "status": "upcoming",
     "phase": "Phase 0 · D4",
     "items": [
@@ -288,7 +288,7 @@
   },
   {
     "date": "2026-06-17",
-    "title": "FA3 concepts — ship flash-attention-triton",
+    "title": "FA3 concepts — flash-attention-triton",
     "status": "upcoming",
     "phase": "Phase 1 · D13",
     "items": [
@@ -518,7 +518,7 @@
   },
   {
     "date": "2026-07-06",
-    "title": "Ship mini-distributed-training",
+    "title": "mini-distributed-training",
     "status": "upcoming",
     "phase": "Phase 2 · D23",
     "items": [
@@ -764,7 +764,7 @@
   },
   {
     "date": "2026-07-21",
-    "title": "Ship nano-inference-engine",
+    "title": "nano-inference-engine",
     "status": "upcoming",
     "phase": "Phase 3 · D34",
     "items": [
