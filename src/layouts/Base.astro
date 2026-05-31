@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import Analytics from '@vercel/analytics/astro';
 
 interface Props {
   title?: string;
@@ -30,5 +31,6 @@ const pageTitle = title ? `${title} — Alexander Xu` : 'Alexander Xu';
       <a href="/blog">blog</a>
       <span>© {new Date().getFullYear()} Alexander Xu</span>
     </footer>
+    <Analytics />
   </body>
 </html>
