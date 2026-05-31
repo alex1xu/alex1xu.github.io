@@ -1,6 +1,8 @@
 ---
 import Base from '../../layouts/Base.astro';
-import Calendar from '../../components/Calendar.astro';
+import Hero from '../../components/Hero.astro';
+import LearningLog from '../../components/LearningLog.astro';
+import ShareButton from '../../components/ShareButton.astro';
 import { getCollection } from 'astro:content';
 
 const posts = (await getCollection('blog'))
@@ -10,10 +12,12 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 ---
-<Base title="Blog">
+<Base title="Writing">
+  <Hero page="blog" compact />
+
   <section class="section">
     <p class="section-title">Learning log</p>
-    <Calendar />
+    <LearningLog />
   </section>
 
   <section class="section">
@@ -24,6 +28,7 @@ function formatDate(d: string) {
           <li class="post-item">
             <span class="post-date">{formatDate(post.data.date)}</span>
             <a href={`/blog/${post.id}`} class="post-title">{post.data.title}</a>
+            <ShareButton url={`/blog/${post.id}`} label="Copy link" />
           </li>
         ))}
       </ul>

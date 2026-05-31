@@ -1,0 +1,98 @@
+---
+import { learning, type LearningEntry, type Status } from '../data/learning';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmt(date: string) {
+  const [, m, d] = date.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}`;
+}
+function statusLabel(s: Status) {
+  return s === 'done' ? 'Done' : s === 'next' ? 'Up next' : 'Planned';
+}
+
+const group = (e: LearningEntry) => (e.status === 'done' ? 'past' : 'upcoming');
+
+// Upcoming soonest-first; past most-recent-first. Rendered contiguously so
+// per-group DOM order is already correct when the filter hides the other group.
+const upcoming = learning.filter((e) => group(e) === 'upcoming').sort((a, b) => (a.date < b.date ? -1 : 1));
+const past = learning.filter((e) => group(e) === 'past').sort((a, b) => (a.date > b.date ? -1 : 1));
+const entries = [...upcoming, ...past];
+---
+<div class="log" data-initial="4">
+  <div class="log-bar">
+    <div class="log-tabs">
+      <button type="button" class="log-tab is-active" data-filter="upcoming">Upcoming</button>
+      <button type="button" class="log-tab" data-filter="past">Past</button>
+    </div>
+    <div class="log-legend">
+      <span><i class="dot next"></i>Up next</span>
+      <span><i class="dot planned"></i>Planned</span>
+      <span><i class="dot done"></i>Done</span>
+    </div>
+  </div>
+
+  <ol class="log-list">
+    {entries.map((e) => (
+      <li class="log-entry" data-group={group(e)}>
+        <div class="log-date">{fmt(e.date)}</div>
+        <div class="log-body">
+          <div class="log-head">
+            <i class:list={['dot', e.status]} title={statusLabel(e.status)}></i>
+            <span class="log-title">{e.title}</span>
+          </div>
+          <ul class="log-items">
+            {e.items.map((it) => <li>{it}</li>)}
+          </ul>
+          {e.blog && <a class="log-link" href={`/blog/${e.blog}`}>Read the write-up →</a>}
+        </div>
+      </li>
+    ))}
+  </ol>
+
+  <button type="button" class="log-more" hidden>Show more</button>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('.log').forEach((log) => {
+    const initial = Number(log.dataset.initial) || 4;
+    const entries = Array.from(log.querySelectorAll<HTMLElement>('.log-entry'));
+    const tabs = Array.from(log.querySelectorAll<HTMLButtonElement>('.log-tab'));
+    const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
+    let filter = 'upcoming';
+    let expanded = false;
+
+    function render() {
+      let shown = 0;
+      let total = 0;
+      for (const el of entries) {
+        const match = el.dataset.group === filter;
+        if (match) total++;
+        const visible = match && (expanded || shown < initial);
+        el.hidden = !visible;
+        if (visible) shown++;
+      }
+      const remaining = total - Math.min(total, initial);
+      if (remaining > 0 && !expanded) {
+        moreBtn.hidden = false;
+        moreBtn.textContent = `Show ${remaining} more`;
+      } else {
+        moreBtn.hidden = true;
+      }
+      tabs.forEach((t) => t.classList.toggle('is-active', t.dataset.filter === filter));
+    }
+
+    tabs.forEach((t) =>
+      t.addEventListener('click', () => {
+        filter = t.dataset.filter!;
+        expanded = false;
+        render();
+      })
+    );
+    moreBtn.addEventListener('click', () => {
+      expanded = true;
+      render();
+    });
+    render();
+  });
+</script>

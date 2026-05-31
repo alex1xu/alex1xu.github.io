@@ -1,16 +1,22 @@
 ---
 import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
 
-// Experience — most recent first.
 const experience = [
-  { role: 'Software Engineer Intern', org: 'Databricks', meta: 'May 2026 – Present', note: '' },
-  { role: 'AI Systems Intern', org: 'Annapurna Labs', meta: 'Sep 2025 – Dec 2025', note: 'RL on Trainium' },
-  { role: 'Software Engineer Intern', org: 'Roblox', meta: 'May 2025 – Aug 2025', note: 'ML infrastructure' },
-  { role: 'Research Intern', org: 'Albert Einstein College of Medicine', meta: 'May 2022 – Sep 2024', note: '' },
-  { role: 'Emergency Medical Technician', org: 'Manhasset-Lakeville Fire Department', meta: 'Jan 2023 – Aug 2024', note: 'Critical care for 200+ patients.' },
+  { role: 'Software Engineer Intern', org: 'Databricks', meta: 'May 2026 – Present', logo: '/logos/databricks_logo.jpeg' },
+  { role: 'Software Engineer Intern', org: 'Annapurna Labs (AWS)', meta: 'Sep 2025 – Dec 2025', logo: '/logos/annapurna_labs_logo.jpeg' },
+  { role: 'Software Engineer Intern', org: 'Roblox', meta: 'May 2025 – Aug 2025', logo: '/logos/roblox_logo.jpeg' },
+  {
+    role: 'Researcher',
+    org: 'Albert Einstein College of Medicine',
+    meta: 'Apr 2022 – Sep 2024',
+    logo: '/logos/einstein_logo.jpeg',
+    desc: 'Worked on several cohort studies on COVID-19 and diabetes risks.',
+    paper: 'https://pubmed.ncbi.nlm.nih.gov/37295808/',
+  },
+  { role: 'Emergency Medical Technician', org: 'Manhasset-Lakeville Fire Department', meta: 'Jan 2023 – Aug 2024', logo: '/logos/ambulance_logo.jpg' },
 ];
 
-// Relevant coursework — systems-first.
 const courses = [
   ['CS 162', 'Operating Systems'],
   ['CS 164', 'Compilers'],
@@ -21,8 +27,6 @@ const courses = [
   ['CS 61C', 'Machine Structures'],
   ['CS 161', 'Computer Security'],
   ['CS 170', 'Efficient Algorithms'],
-  ['CS 180', 'Computer Vision'],
-  ['EECS 183', 'Natural Language Processing'],
   ['EECS 127', 'Optimization Models'],
   ['CS 61B', 'Data Structures'],
   ['CS 70', 'Discrete Math & Probability'],
@@ -32,23 +36,24 @@ const courses = [
 ];
 ---
 <Base>
-  <section class="hero">
-    <h1 class="hero-name">Alexander Xu</h1>
-    <div class="hero-links">
-      <a href="https://www.linkedin.com/in/alexanderyxu/" target="_blank" rel="me noopener noreferrer">LinkedIn</a>
-      <a href="https://github.com/alex1xu" target="_blank" rel="me noopener noreferrer">GitHub</a>
-      <a href="https://x.com/alex1xu" target="_blank" rel="me noopener noreferrer">Twitter</a>
-    </div>
-  </section>
+  <Hero page="home" />
 
   <section class="section">
     <p class="section-title">Experience</p>
     <ul class="exp-list">
       {experience.map((e) => (
         <li class="exp-item">
-          <span class="exp-role">{e.role} · <span class="exp-org">{e.org}</span></span>
-          {e.meta && <span class="exp-meta">{e.meta}</span>}
-          {e.note && <span class="exp-note">{e.note}</span>}
+          <img class="exp-logo" src={e.logo} alt={`${e.org} logo`} width="40" height="40" loading="lazy" />
+          <div class="exp-body">
+            <span class="exp-role">{e.role} · <span class="exp-org">{e.org}</span></span>
+            <span class="exp-meta">{e.meta}</span>
+            {e.desc && <span class="exp-note">{e.desc}</span>}
+            {e.paper && (
+              <a class="exp-link" href={e.paper} target="_blank" rel="noopener noreferrer">
+                Read the paper (co-first author) →
+              </a>
+            )}
+          </div>
         </li>
       ))}
     </ul>
@@ -56,78 +61,22 @@ const courses = [
 
   <section class="section">
     <p class="section-title">Education</p>
-    <div class="exp-item">
-      <span class="exp-role">University of California, Berkeley</span>
-      <span class="exp-meta">B.A. Computer Science · 2024–2026 · GPA 4.0/4.0</span>
-      <span class="exp-note">
-        Traders at Berkeley (Head of Game Development, BTC 26) ·
-        Student Association for Applied Statistics
-      </span>
-    </div>
+    <ul class="exp-list">
+      <li class="exp-item">
+        <img class="exp-logo" src="/logos/uc_berkeley_logo.jpeg" alt="UC Berkeley logo" width="40" height="40" loading="lazy" />
+        <div class="exp-body">
+          <span class="exp-role">University of California, Berkeley</span>
+          <span class="exp-meta">B.A. Computer Science · 2024–2026 · GPA 4.0/4.0</span>
+          <span class="exp-note">Traders at Berkeley — Head of Game Development, 2026 Berkeley Trading Competition</span>
+          <span class="exp-note">Student Association for Applied Statistics — Project Manager</span>
+        </div>
+      </li>
+    </ul>
     <p class="course-label">Relevant coursework</p>
     <ul class="course-tags">
       {courses.map(([code, name]) => (
         <li class="course"><span class="course-code">{code}</span> {name}</li>
       ))}
     </ul>
-  </section>
-
-  <section class="section bio">
-    <p class="section-title">About Me</p>
-
-    <div class="bio-part">
-      <p>
-        I grew up in New York. During COVID I picked up competitive programming,
-        and that's how I first got hooked on programming. From there I explored
-        other corners of the field — web development through hobby projects, and
-        data science doing research at a hospital. Outside of computers I was a
-        Boy Scout and worked as an emergency medical technician for two years,
-        and I still spend my free time visiting national parks and camping with
-        friends.
-      </p>
-    </div>
-
-    {/* Replace each placeholder with <img src="/photos/your-photo.jpg" alt="..." /> */}
-    <div class="photo-strip">
-      <figure class="photo-frame ph"><span>photo</span></figure>
-      <figure class="photo-frame ph"><span>photo</span></figure>
-    </div>
-
-    <div class="bio-part">
-      <p>
-        In September 2024 I started at UC Berkeley studying computer science. My
-        freshman spring I took CS 61C, computer architecture, and it completely
-        blew my mind — I'd never really thought about how my programs were
-        actually run, or the design decisions underneath that make everything we
-        have today possible. I've been drawn to systems ever since, leaning into
-        advanced coursework: operating systems, compilers, database systems,
-        graduate computer architecture, ASIC and digital circuit design, and
-        internet architecture.
-      </p>
-    </div>
-
-    <div class="photo-strip">
-      <figure class="photo-frame ph"><span>photo</span></figure>
-    </div>
-
-    <div class="bio-part">
-      <p>
-        Over the summers I've done software engineering internships at
-        systems-heavy companies — Roblox, Annapurna Labs, and currently
-        Databricks. Two clubs have been a big part of my time at Berkeley: the
-        Student Association for Applied Statistics (SAAS) and Traders at
-        Berkeley.
-      </p>
-    </div>
-
-    <div class="photo-strip">
-      <figure class="photo-frame ph"><span>photo</span></figure>
-      <figure class="photo-frame ph"><span>photo</span></figure>
-    </div>
-  </section>
-
-  <section class="section">
-    <p class="section-title">Writing</p>
-    <p><a href="/blog">Technical blog &amp; learning log →</a></p>
   </section>
 </Base>

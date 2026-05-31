@@ -1,5 +1,7 @@
 ---
 import Base from './Base.astro';
+import Hero from '../components/Hero.astro';
+import ShareButton from '../components/ShareButton.astro';
 
 interface Props {
   title: string;
@@ -14,7 +16,8 @@ const formatted = new Date(date).toLocaleDateString('en-US', {
 });
 ---
 <Base title={title} description={description}>
-  <a href="/blog" class="back-link">← Blog</a>
+  <Hero page="blog" compact />
+  <a href="/blog" class="back-link">← All writing</a>
   <article class="prose">
     <h1>{title}</h1>
     <div class="post-meta">
@@ -22,6 +25,7 @@ const formatted = new Date(date).toLocaleDateString('en-US', {
       {tags && tags.length > 0 && (
         <span>{tags.join(', ')}</span>
       )}
+      <ShareButton url={Astro.url.pathname} label="Copy link" />
     </div>
     <slot />
   </article>

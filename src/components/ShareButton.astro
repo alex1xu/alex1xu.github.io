@@ -1,0 +1,39 @@
+---
+interface Props {
+  /** absolute or root-relative URL to copy */
+  url: string;
+  label?: string;
+}
+const { url, label = 'Copy link' } = Astro.props;
+---
+<button type="button" class="share-btn" data-copy={url} data-label={label}>{label}</button>
+
+<script>
+  const w = window as unknown as { __shareInit?: boolean };
+  if (!w.__shareInit) {
+    w.__shareInit = true;
+    document.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.share-btn');
+      if (!btn) return;
+      const raw = btn.getAttribute('data-copy') || location.pathname;
+      const full = new URL(raw, location.origin).href;
+      try {
+        await navigator.clipboard.writeText(full);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = full;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      const label = btn.getAttribute('data-label') || 'Copy link';
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = label;
+        btn.classList.remove('copied');
+      }, 1500);
+    });
+  }
+</script>
