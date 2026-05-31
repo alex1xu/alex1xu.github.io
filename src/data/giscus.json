@@ -7,7 +7,7 @@
   "reactionsEnabled": "1",
   "emitMetadata": "0",
   "inputPosition": "top",
-  "theme": "gruvbox",
+  "theme": "https://alex1xu.github.io/giscus-reactions.css",
   "lang": "en",
   "loading": "lazy"
 }

@@ -1,35 +1,50 @@
-/*
-  Custom giscus theme: reactions bar only, warm light palette.
-  Imports giscus's own light theme then hides the comment thread and input.
-*/
+/* Warm palette giscus theme — imports light base, then overrides key colors */
 @import url("https://giscus.app/themes/light.css");
 
-/* Hide the comment thread and new-comment input */
-.gsc-comment-box,
-.gsc-comments,
-.gsc-header { display: none !important; }
-
-/* Tighten up now that only the reactions bar remains */
-.gsc-main { padding-bottom: 0 !important; }
-.gsc-reactions { margin-bottom: 0 !important; }
-
-/* Warm palette overrides */
 :root {
-  --color-canvas-default: #faf5ee;
-  --color-canvas-subtle: #f3ebdf;
-  --color-border-default: #e7ddcd;
-  --color-border-muted: #e7ddcd;
-  --color-fg-default: #322b25;
-  --color-fg-muted: #8a7d6d;
-  --color-accent-fg: #c06a3f;
-  --color-accent-emphasis: #c06a3f;
-  --color-btn-bg: #f3ebdf;
-  --color-btn-border: #e7ddcd;
-  --color-btn-hover-bg: #ecd3c1;
-  --color-btn-primary-text: #fff;
-  --color-btn-primary-bg: #c06a3f;
-  --color-btn-primary-border: #c06a3f;
-  --color-btn-primary-hover-bg: #a55234;
-  --color-social-reaction-bg-hover: #ecd3c1;
+  --color-canvas-default:          #faf5ee;
+  --color-canvas-overlay:          #faf5ee;
+  --color-canvas-inset:            #f3ebdf;
+  --color-canvas-subtle:           #f3ebdf;
+
+  --color-border-default:          #e7ddcd;
+  --color-border-muted:            #e7ddcd;
+
+  --color-fg-default:              #322b25;
+  --color-fg-muted:                #8a7d6d;
+  --color-fg-subtle:               #a09080;
+  --color-fg-on-emphasis:          #ffffff;
+
+  --color-accent-fg:               #c06a3f;
+  --color-accent-emphasis:         #c06a3f;
+  --color-accent-muted:            rgba(192, 106, 63, .25);
+  --color-accent-subtle:           #ecd3c1;
+
+  --color-btn-text:                #322b25;
+  --color-btn-bg:                  #f3ebdf;
+  --color-btn-border:              rgba(50, 43, 37, .15);
+  --color-btn-hover-bg:            #ecd3c1;
+  --color-btn-hover-border:        rgba(50, 43, 37, .2);
+  --color-btn-active-bg:           #e5d5c0;
+  --color-btn-selected-bg:         #e5d5c0;
+
+  --color-btn-primary-text:        #ffffff;
+  --color-btn-primary-bg:          #c06a3f;
+  --color-btn-primary-border:      rgba(50, 43, 37, .15);
+  --color-btn-primary-hover-bg:    #a55234;
+  --color-btn-primary-hover-border:rgba(50, 43, 37, .15);
+  --color-btn-primary-selected-bg: #8f4229;
+  --color-btn-primary-disabled-bg: #e0b99e;
+
+  --color-neutral-muted:           rgba(138, 125, 109, .15);
+  --color-neutral-subtle:          rgba(138, 125, 109, .1);
+
+  --color-social-reaction-bg-hover:         #ecd3c1;
   --color-social-reaction-bg-reacted-hover: #ecd3c1;
+
+  --primer-shadow-focus: 0 0 0 3px rgba(192, 106, 63, .3);
+  --primer-shadow-inset: inset 0 1px 0 rgba(50, 43, 37, .075);
 }
+
+/* Soften the box shadow on cards to match the borderless site feel */
+.gsc-main .color-shadow-medium { box-shadow: 0 1px 3px rgba(50, 43, 37, .08) !important; }

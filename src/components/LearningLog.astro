@@ -135,7 +135,7 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
     const visible  = expanded ? matching : matching.slice(0, initial);
     const visibleSet = new Set(visible);
 
-    entries.forEach(el => { el.hidden = !visibleSet.has(el); });
+    entries.forEach(el => { el.style.display = visibleSet.has(el) ? '' : 'none'; });
 
     const remaining = matching.length - visible.length;
     moreBtn.hidden = remaining <= 0;
