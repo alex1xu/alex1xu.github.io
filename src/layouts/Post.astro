@@ -16,7 +16,6 @@ const slug = Astro.url.pathname.replace(/\/$/, '').split('/').pop() ?? '';
 const formatted = new Date(date).toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric',
 });
-const giscusReady = !giscus.repoId.startsWith('FILL') && !giscus.categoryId.startsWith('FILL');
 ---
 <Base title={title} description={description}>
   <Hero page="blog" />
@@ -31,36 +30,31 @@ const giscusReady = !giscus.repoId.startsWith('FILL') && !giscus.categoryId.star
     <slot />
   </article>
 
-  {giscusReady && (
-    <div class="giscus-wrap">
-      <script is:inline
-        src="https://giscus.app/client.js"
-        data-repo={giscus.repo}
-        data-repo-id={giscus.repoId}
-        data-category={giscus.category}
-        data-category-id={giscus.categoryId}
-        data-mapping={giscus.mapping}
-        data-strict="0"
-        data-reactions-enabled={giscus.reactionsEnabled}
-        data-emit-metadata={giscus.emitMetadata}
-        data-input-position={giscus.inputPosition}
-        data-theme={giscus.theme}
-        data-lang="en"
-        crossorigin="anonymous"
-        async>
-      </script>
-    </div>
-  )}
+  <div class="giscus-wrap">
+    <script is:inline
+      src="https://giscus.app/client.js"
+      data-repo={giscus.repo}
+      data-repo-id={giscus.repoId}
+      data-category-id={giscus.categoryId}
+      data-mapping={giscus.mapping}
+      data-term={giscus.term}
+      data-strict={giscus.strict}
+      data-reactions-enabled={giscus.reactionsEnabled}
+      data-emit-metadata={giscus.emitMetadata}
+      data-input-position={giscus.inputPosition}
+      data-theme={giscus.theme}
+      data-lang={giscus.lang}
+      data-loading={giscus.loading}
+      crossorigin="anonymous"
+      async>
+    </script>
+  </div>
 </Base>
 
-<!-- mark post as read in localStorage -->
 <script define:vars={{ slug }}>
   try {
     const key = 'read_posts';
     const read = JSON.parse(localStorage.getItem(key) || '[]');
-    if (!read.includes(slug)) {
-      read.push(slug);
-      localStorage.setItem(key, JSON.stringify(read));
-    }
+    if (!read.includes(slug)) { read.push(slug); localStorage.setItem(key, JSON.stringify(read)); }
   } catch {}
 </script>
