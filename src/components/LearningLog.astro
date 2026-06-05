@@ -4,7 +4,7 @@ import learning from '../data/learning.json';
 type Status = 'done' | 'upcoming';
 interface Link { label: string; url: string; }
 interface Entry {
-  date: string; title: string; items?: string[];
+  date: string; title: string;
   status: Status; phase?: string; repo?: string; links?: Link[]; blog?: string;
 }
 const entries = learning as Entry[];
