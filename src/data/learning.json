@@ -4,14 +4,27 @@
     "title": "GPU execution & memory model",
     "status": "done",
     "phase": "Phase 0 · D1",
-    "task": "Spin up a GPU, get CUDA + PyTorch working, and record your card's peak bf16 FLOPs + HBM bandwidth — you'll use them all summer.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "Horace He — Making Deep Learning Go Brrrr (compute/memory/overhead model)", "url": "https://horace.io/brrr_intro.html" },
-      { "label": "CS336 Lecture 5 — GPUs", "url": "https://www.youtube.com/watch?v=6OBtO9niT00" },
-      { "label": "CS336 lecture slides", "url": "https://github.com/stanford-cs336/spring2025-lectures" },
-      { "label": "GPU MODE Lecture 1 — Profiling & Integrating CUDA in PyTorch", "url": "https://www.youtube.com/watch?v=LuhJEEJQgUM" },
-      { "label": "PMPP (Ch 1–4; read Ch 4 — warps, occupancy, divergence)", "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0" }
+      {
+        "label": "Horace He — Making Deep Learning Go Brrrr (compute/memory/overhead model)",
+        "url": "https://horace.io/brrr_intro.html"
+      },
+      {
+        "label": "CS336 Lecture 5 — GPUs",
+        "url": "https://www.youtube.com/watch?v=6OBtO9niT00"
+      },
+      {
+        "label": "CS336 lecture slides",
+        "url": "https://github.com/stanford-cs336/spring2025-lectures"
+      },
+      {
+        "label": "GPU MODE Lecture 1 — Profiling & Integrating CUDA in PyTorch",
+        "url": "https://www.youtube.com/watch?v=LuhJEEJQgUM"
+      },
+      {
+        "label": "PMPP (Ch 1–4; read Ch 4 — warps, occupancy, divergence)",
+        "url": "https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0"
+      }
     ]
   },
   {
@@ -19,11 +32,15 @@
     "title": "CUDA C — threads, blocks, first kernels",
     "status": "done",
     "phase": "Phase 0 · D2",
-    "task": "Write vector_add + a naive matmul kernel, bind into PyTorch with load_inline, verify against torch.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "GPU MODE Lecture 3 — Getting Started with CUDA (Jeremy Howard)", "url": "https://www.youtube.com/watch?v=4sgKnKbR-WE" },
-      { "label": "GPU MODE Lecture 5 — Going Further with CUDA for Python Programmers", "url": "https://www.youtube.com/watch?v=wVsR-YhaHlM" }
+      {
+        "label": "GPU MODE Lecture 3 — Getting Started with CUDA (Jeremy Howard)",
+        "url": "https://www.youtube.com/watch?v=4sgKnKbR-WE"
+      },
+      {
+        "label": "GPU MODE Lecture 5 — Going Further with CUDA for Python Programmers",
+        "url": "https://www.youtube.com/watch?v=wVsR-YhaHlM"
+      }
     ]
   },
   {
@@ -31,11 +48,15 @@
     "title": "Memory hierarchy — tiling & coalescing",
     "status": "done",
     "phase": "Phase 0 · D3",
-    "task": "Tiled (shared-memory) matmul; benchmark naive vs tiled vs cuBLAS and place each on the roofline.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "GPU MODE Lecture 4 — Compute & Memory Architecture", "url": "https://www.youtube.com/watch?v=lTmYrKwjSOU" },
-      { "label": "GPU MODE Lecture 8 — CUDA Performance Checklist", "url": "https://www.youtube.com/watch?v=SGhfUhlowB4" }
+      {
+        "label": "GPU MODE Lecture 4 — Compute & Memory Architecture",
+        "url": "https://www.youtube.com/watch?v=lTmYrKwjSOU"
+      },
+      {
+        "label": "GPU MODE Lecture 8 — CUDA Performance Checklist",
+        "url": "https://www.youtube.com/watch?v=SGhfUhlowB4"
+      }
     ]
   },
   {
@@ -43,14 +64,27 @@
     "title": "Profiling deep-dive — Nsight + torch profiler",
     "status": "done",
     "phase": "Phase 0 · D4",
-    "task": "Profile the matmul with ncu (SoL + memory charts); classify a real training step's top-5 kernels compute- vs memory-bound.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "Nsight Compute Profiling Guide — Speed-of-Light, occupancy, memory", "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html" },
-      { "label": "Nsight Compute CLI", "url": "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html" },
-      { "label": "Nsight Systems — timeline, kernel overlap", "url": "https://docs.nvidia.com/nsight-systems/" },
-      { "label": "PyTorch profiler recipe", "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html" },
-      { "label": "GPU MODE Lecture 16 — On-Hands Profiling", "url": "https://www.youtube.com/watch?v=SKV6kDk1s94" }
+      {
+        "label": "Nsight Compute Profiling Guide — Speed-of-Light, occupancy, memory",
+        "url": "https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html"
+      },
+      {
+        "label": "Nsight Compute CLI",
+        "url": "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
+      },
+      {
+        "label": "Nsight Systems — timeline, kernel overlap",
+        "url": "https://docs.nvidia.com/nsight-systems/"
+      },
+      {
+        "label": "PyTorch profiler recipe",
+        "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html"
+      },
+      {
+        "label": "GPU MODE Lecture 16 — On-Hands Profiling",
+        "url": "https://www.youtube.com/watch?v=SKV6kDk1s94"
+      }
     ]
   },
   {
@@ -58,11 +92,15 @@
     "title": "Build: parallel reduction kernel",
     "status": "upcoming",
     "phase": "Phase 0 · D5",
-    "task": "Sum-reduction kernel (sequential addressing, no divergence, warp-unrolled); benchmark vs torch.sum.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "GPU MODE Lecture 9 — Reductions", "url": "https://www.youtube.com/watch?v=09wntC6BT5o" },
-      { "label": "Online softmax (Milakov & Gimelshein 2018) — the running max/sum trick FlashAttention reuses", "url": "https://arxiv.org/abs/1805.02867" }
+      {
+        "label": "GPU MODE Lecture 9 — Reductions",
+        "url": "https://www.youtube.com/watch?v=09wntC6BT5o"
+      },
+      {
+        "label": "Online softmax (Milakov & Gimelshein 2018) — the running max/sum trick FlashAttention reuses",
+        "url": "https://arxiv.org/abs/1805.02867"
+      }
     ]
   },
   {
@@ -70,11 +108,15 @@
     "title": "Ship: gpu-kernels-from-scratch + occupancy deep-dive",
     "status": "upcoming",
     "phase": "Phase 0 · D6",
-    "task": "Block-size/occupancy sweep (why it isn't 100%) + register tiling toward % of cuBLAS; ship the repo with a bench harness + roofline; start watching OSS good-first-issues. Log post #1.",
-    "repo": "alex1xu/gpu-kernels-from-scratch",
     "links": [
-      { "label": "HuggingFace Ultra-Scale Playbook — compute/memory intro", "url": "https://huggingface.co/spaces/nanotron/ultrascale-playbook" },
-      { "label": "NVIDIA Tensor-Core performance guide", "url": "https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21929-tensor-core-performance-on-nvidia-gpus-the-ultimate-guide.pdf" }
+      {
+        "label": "HuggingFace Ultra-Scale Playbook — compute/memory intro",
+        "url": "https://huggingface.co/spaces/nanotron/ultrascale-playbook"
+      },
+      {
+        "label": "NVIDIA Tensor-Core performance guide",
+        "url": "https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21929-tensor-core-performance-on-nvidia-gpus-the-ultimate-guide.pdf"
+      }
     ]
   },
   {
@@ -82,12 +124,23 @@
     "title": "Triton fundamentals",
     "status": "upcoming",
     "phase": "Phase 1 · D7",
-    "task": "Work the Triton vector-add + fused-softmax tutorials; re-implement your reduction in Triton.",
     "links": [
-      { "label": "CS336 Lecture 6 — Kernels, Triton", "url": "https://www.youtube.com/watch?v=E8Mju53VB00" },
-      { "label": "Triton tutorials", "url": "https://triton-lang.org/main/getting-started/tutorials/index.html" },
-      { "label": "Triton fused-softmax tutorial", "url": "https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html" },
-      { "label": "GPU MODE Lecture 14 — Practitioner's Guide to Triton", "url": "https://www.youtube.com/watch?v=DdTsX6DQk24" }
+      {
+        "label": "CS336 Lecture 6 — Kernels, Triton",
+        "url": "https://www.youtube.com/watch?v=E8Mju53VB00"
+      },
+      {
+        "label": "Triton tutorials",
+        "url": "https://triton-lang.org/main/getting-started/tutorials/index.html"
+      },
+      {
+        "label": "Triton fused-softmax tutorial",
+        "url": "https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html"
+      },
+      {
+        "label": "GPU MODE Lecture 14 — Practitioner's Guide to Triton",
+        "url": "https://www.youtube.com/watch?v=DdTsX6DQk24"
+      }
     ]
   },
   {
@@ -95,10 +148,15 @@
     "title": "Triton matmul + autotuning",
     "status": "upcoming",
     "phase": "Phase 1 · D8",
-    "task": "Triton matmul with @triton.autotune; benchmark vs cuBLAS and your CUDA tiled matmul, explain the gap.",
     "links": [
-      { "label": "Triton matrix-multiplication tutorial", "url": "https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html" },
-      { "label": "GPU MODE Lecture 29 — Triton Internals", "url": "https://www.youtube.com/watch?v=njgow_zaJMw" }
+      {
+        "label": "Triton matrix-multiplication tutorial",
+        "url": "https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html"
+      },
+      {
+        "label": "GPU MODE Lecture 29 — Triton Internals",
+        "url": "https://www.youtube.com/watch?v=njgow_zaJMw"
+      }
     ]
   },
   {
@@ -106,12 +164,23 @@
     "title": "FlashAttention — theory & online softmax",
     "status": "upcoming",
     "phase": "Phase 1 · D9",
-    "task": "Derive the online-softmax rescaling by hand; write a note on why FA is linear in memory and what the backward recomputes.",
     "links": [
-      { "label": "FlashAttention (Dao et al. 2022) — IO-awareness, tiling, online softmax", "url": "https://arxiv.org/abs/2205.14135" },
-      { "label": "FlashAttention-2 — work partitioning, fewer non-matmul FLOPs", "url": "https://arxiv.org/abs/2307.08691" },
-      { "label": "GPU MODE Lecture 12 — Flash Attention", "url": "https://www.youtube.com/watch?v=zEuwuCTEf_0" },
-      { "label": "Tri Dao's blog", "url": "https://tridao.me/blog/" }
+      {
+        "label": "FlashAttention (Dao et al. 2022) — IO-awareness, tiling, online softmax",
+        "url": "https://arxiv.org/abs/2205.14135"
+      },
+      {
+        "label": "FlashAttention-2 — work partitioning, fewer non-matmul FLOPs",
+        "url": "https://arxiv.org/abs/2307.08691"
+      },
+      {
+        "label": "GPU MODE Lecture 12 — Flash Attention",
+        "url": "https://www.youtube.com/watch?v=zEuwuCTEf_0"
+      },
+      {
+        "label": "Tri Dao's blog",
+        "url": "https://tridao.me/blog/"
+      }
     ]
   },
   {
@@ -119,43 +188,59 @@
     "title": "Build: FlashAttention-2 forward in Triton",
     "status": "upcoming",
     "phase": "Phase 1 · D10",
-    "task": "Start CS336 A2: benchmark the A1 model, then implement the FlashAttention-2 forward kernel in Triton.",
-    "repo": "alex1xu/flash-attention-triton",
     "links": [
-      { "label": "CS336 Assignment 2 — Systems (read the handout fully)", "url": "https://github.com/stanford-cs336/assignment2-systems" },
-      { "label": "Triton fused-attention tutorial", "url": "https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html" }
+      {
+        "label": "CS336 Assignment 2 — Systems (read the handout fully)",
+        "url": "https://github.com/stanford-cs336/assignment2-systems"
+      },
+      {
+        "label": "Triton fused-attention tutorial",
+        "url": "https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html"
+      }
     ]
   },
   {
     "date": "2026-06-15",
     "title": "FA forward — correctness, edge cases, benchmarking",
     "status": "upcoming",
-    "phase": "Phase 1 · D11",
-    "task": "Match SDPA numerically (state a tolerance); add causal + GQA + non-power-of-2 head-dim edge cases; sweep seq lengths and ncu-attribute the gap to FA2.",
-    "repo": "alex1xu/flash-attention-triton"
+    "phase": "Phase 1 · D11"
   },
   {
     "date": "2026-06-16",
     "title": "Build: FlashAttention backward pass",
     "status": "upcoming",
-    "phase": "Phase 1 · D12",
-    "task": "Implement + gradcheck the backward kernel — dQ/dK/dV with recompute and the rowsum(dO*O) delta trick; the dK/dV accumulation is the hard part most reimplementations skip.",
-    "repo": "alex1xu/flash-attention-triton"
+    "phase": "Phase 1 · D12"
   },
   {
     "date": "2026-06-17",
     "title": "Ship: flash-attention-triton (+ torch.compile contrast)",
     "status": "upcoming",
     "phase": "Phase 1 · D13",
-    "task": "Diff your kernel against Inductor's generated Triton (TORCH_LOGS=output_code, depyf); ship fwd+bwd benchmarked vs SDPA/FA2 with the ncu-attributed gap + roofline. Log post #2.",
-    "repo": "alex1xu/flash-attention-triton",
     "links": [
-      { "label": "FlashAttention-3 — Hopper async, warp specialization, TMA, FP8", "url": "https://arxiv.org/abs/2407.08608" },
-      { "label": "GPU MODE Lecture 36 — CUTLASS & FlashAttention 3", "url": "https://www.youtube.com/watch?v=JwUcZwPOCpA" },
-      { "label": "ThunderKittens — tile abstractions", "url": "https://github.com/HazyResearch/ThunderKittens" },
-      { "label": "Hazy Research blog", "url": "https://hazyresearch.stanford.edu/blog" },
-      { "label": "torch.compile troubleshooting (TORCH_LOGS=output_code)", "url": "https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html" },
-      { "label": "depyf — step through torch.compile output", "url": "https://github.com/thuml/depyf" }
+      {
+        "label": "FlashAttention-3 — Hopper async, warp specialization, TMA, FP8",
+        "url": "https://arxiv.org/abs/2407.08608"
+      },
+      {
+        "label": "GPU MODE Lecture 36 — CUTLASS & FlashAttention 3",
+        "url": "https://www.youtube.com/watch?v=JwUcZwPOCpA"
+      },
+      {
+        "label": "ThunderKittens — tile abstractions",
+        "url": "https://github.com/HazyResearch/ThunderKittens"
+      },
+      {
+        "label": "Hazy Research blog",
+        "url": "https://hazyresearch.stanford.edu/blog"
+      },
+      {
+        "label": "torch.compile troubleshooting (TORCH_LOGS=output_code)",
+        "url": "https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html"
+      },
+      {
+        "label": "depyf — step through torch.compile output",
+        "url": "https://github.com/thuml/depyf"
+      }
     ]
   },
   {
@@ -163,12 +248,19 @@
     "title": "Parallelism landscape + collective comms",
     "status": "upcoming",
     "phase": "Phase 2 · D14",
-    "task": "Map DP/TP/PP/SP/EP; hand-write ring all-reduce over send/recv, benchmark vs NCCL, and find the ring-vs-tree bandwidth crossover.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "CS336 Lecture 7 — Parallelism 1", "url": "https://www.youtube.com/watch?v=l1RJcDjzK8M" },
-      { "label": "GPU MODE Lecture 17 — GPU Collective Communication (NCCL)", "url": "https://www.youtube.com/watch?v=T22e3fgit-A" },
-      { "label": "NCCL user guide", "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html" }
+      {
+        "label": "CS336 Lecture 7 — Parallelism 1",
+        "url": "https://www.youtube.com/watch?v=l1RJcDjzK8M"
+      },
+      {
+        "label": "GPU MODE Lecture 17 — GPU Collective Communication (NCCL)",
+        "url": "https://www.youtube.com/watch?v=T22e3fgit-A"
+      },
+      {
+        "label": "NCCL user guide",
+        "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html"
+      }
     ]
   },
   {
@@ -176,12 +268,19 @@
     "title": "Build: DDP from scratch",
     "status": "upcoming",
     "phase": "Phase 2 · D15",
-    "task": "DDP from scratch — gradient bucketing + all-reduce/backward overlap; parity vs torch DDP on 2 GPUs, and prove the overlap with nsys.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "CS336 Lecture 8 — Parallelism 2", "url": "https://www.youtube.com/watch?v=LHpr5ytssLo" },
-      { "label": "ZeRO (arXiv:1910.02054) — the three partitioning stages", "url": "https://arxiv.org/abs/1910.02054" },
-      { "label": "PyTorch FSDP paper (arXiv:2304.11277)", "url": "https://arxiv.org/abs/2304.11277" }
+      {
+        "label": "CS336 Lecture 8 — Parallelism 2",
+        "url": "https://www.youtube.com/watch?v=LHpr5ytssLo"
+      },
+      {
+        "label": "ZeRO (arXiv:1910.02054) — the three partitioning stages",
+        "url": "https://arxiv.org/abs/1910.02054"
+      },
+      {
+        "label": "PyTorch FSDP paper (arXiv:2304.11277)",
+        "url": "https://arxiv.org/abs/2304.11277"
+      }
     ]
   },
   {
@@ -189,11 +288,15 @@
     "title": "Build: ZeRO-1 optimizer-state partitioning",
     "status": "upcoming",
     "phase": "Phase 2 · D16",
-    "task": "ZeRO-1 on top of your DDP; measure the memory savings and reconcile against the paper's accounting.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "ZeRO-Offload (arXiv:2101.06840)", "url": "https://arxiv.org/abs/2101.06840" },
-      { "label": "nanotron — minimal production-style reference", "url": "https://github.com/huggingface/nanotron" }
+      {
+        "label": "ZeRO-Offload (arXiv:2101.06840)",
+        "url": "https://arxiv.org/abs/2101.06840"
+      },
+      {
+        "label": "nanotron — minimal production-style reference",
+        "url": "https://github.com/huggingface/nanotron"
+      }
     ]
   },
   {
@@ -201,11 +304,15 @@
     "title": "Build: tensor parallelism (Megatron)",
     "status": "upcoming",
     "phase": "Phase 2 · D17",
-    "task": "TP for an MLP + attention block (column-parallel → row-parallel with all-reduce; the f/g conjugate operators); verify parity vs single-GPU.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "Megatron-LM (arXiv:1909.08053)", "url": "https://arxiv.org/abs/1909.08053" },
-      { "label": "Megatron-LM source — tensor-parallel module", "url": "https://github.com/NVIDIA/Megatron-LM" }
+      {
+        "label": "Megatron-LM (arXiv:1909.08053)",
+        "url": "https://arxiv.org/abs/1909.08053"
+      },
+      {
+        "label": "Megatron-LM source — tensor-parallel module",
+        "url": "https://github.com/NVIDIA/Megatron-LM"
+      }
     ]
   },
   {
@@ -213,10 +320,11 @@
     "title": "Build: 1F1B pipeline parallelism",
     "status": "upcoming",
     "phase": "Phase 2 · D18",
-    "task": "1F1B pipeline across 2 stages; measure and explain the bubble; sketch how DP+TP+PP compose into 3D.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "Megatron PTD-P (arXiv:2104.04473) — interleaved 1F1B, bubble analysis", "url": "https://arxiv.org/abs/2104.04473" }
+      {
+        "label": "Megatron PTD-P (arXiv:2104.04473) — interleaved 1F1B, bubble analysis",
+        "url": "https://arxiv.org/abs/2104.04473"
+      }
     ]
   },
   {
@@ -224,10 +332,11 @@
     "title": "Recomputation + mixed precision + overlap",
     "status": "upcoming",
     "phase": "Phase 2 · D19",
-    "task": "Add gradient checkpointing + bf16 (fp32 master weights, loss scaling); measure the memory/throughput tradeoff. (Connects to the rematerialization thread from D1.)",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "llm.c — raw C/CUDA implementation to read", "url": "https://github.com/karpathy/llm.c" }
+      {
+        "label": "llm.c — raw C/CUDA implementation to read",
+        "url": "https://github.com/karpathy/llm.c"
+      }
     ]
   },
   {
@@ -235,13 +344,23 @@
     "title": "MoE & expert parallelism (survey)",
     "status": "upcoming",
     "phase": "Phase 2 · D20",
-    "task": "Toy top-2 MoE layer with all-to-all dispatch + an aux load-balancing loss. 1-day breadth pass — don't rabbit-hole.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "CS336 Lecture 4 — Mixture of Experts", "url": "https://www.youtube.com/watch?v=LPv1KfUXLCo" },
-      { "label": "GShard (arXiv:2006.16668)", "url": "https://arxiv.org/abs/2006.16668" },
-      { "label": "Switch Transformer (arXiv:2101.03961)", "url": "https://arxiv.org/abs/2101.03961" },
-      { "label": "DeepSpeed-MoE (arXiv:2201.05596)", "url": "https://arxiv.org/abs/2201.05596" }
+      {
+        "label": "CS336 Lecture 4 — Mixture of Experts",
+        "url": "https://www.youtube.com/watch?v=LPv1KfUXLCo"
+      },
+      {
+        "label": "GShard (arXiv:2006.16668)",
+        "url": "https://arxiv.org/abs/2006.16668"
+      },
+      {
+        "label": "Switch Transformer (arXiv:2101.03961)",
+        "url": "https://arxiv.org/abs/2101.03961"
+      },
+      {
+        "label": "DeepSpeed-MoE (arXiv:2201.05596)",
+        "url": "https://arxiv.org/abs/2201.05596"
+      }
     ]
   },
   {
@@ -249,31 +368,37 @@
     "title": "Sequence parallelism + checkpoint/restore",
     "status": "upcoming",
     "phase": "Phase 2 · D21",
-    "task": "Checkpoint save/restore + simulated failure recovery; verify resumed training matches the loss curve. Note how sequence/context parallelism extends attention across devices.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "Ring Attention (arXiv:2310.01889)", "url": "https://arxiv.org/abs/2310.01889" },
-      { "label": "GPU MODE Lecture 13 — Ring Attention", "url": "https://www.youtube.com/watch?v=ws7angQYIxI" }
+      {
+        "label": "Ring Attention (arXiv:2310.01889)",
+        "url": "https://arxiv.org/abs/2310.01889"
+      },
+      {
+        "label": "GPU MODE Lecture 13 — Ring Attention",
+        "url": "https://www.youtube.com/watch?v=ws7angQYIxI"
+      }
     ]
   },
   {
     "date": "2026-07-03",
     "title": "Integrate: train a small GPT in parallel (8×H100)",
     "status": "upcoming",
-    "phase": "Phase 2 · D22",
-    "task": "Combine DDP+TP+ckpt+bf16 into one framework (finish CS336 A2's distributed part); train a small GPT on 8×H100, measure MFU + a scaling curve. Debug on 1 GPU first. (US holiday — shift to Jul 6 if taking it off.)",
-    "repo": "alex1xu/mini-distributed-training"
+    "phase": "Phase 2 · D22"
   },
   {
     "date": "2026-07-06",
     "title": "Ship: mini-distributed-training (scaling study)",
     "status": "upcoming",
     "phase": "Phase 2 · D23",
-    "task": "Ship the repo: scaling study with MFU decomposed (bubble / comm / recompute / tiling), bucket-size + TP-degree sweeps, and an honest 'what TorchTitan/Megatron do better' section. Log post #3.",
-    "repo": "alex1xu/mini-distributed-training",
     "links": [
-      { "label": "GPU MODE Lecture 39 — TorchTitan", "url": "https://www.youtube.com/watch?v=VYWRjcUqW6w" },
-      { "label": "TorchTitan — clean modern reference", "url": "https://github.com/pytorch/torchtitan" }
+      {
+        "label": "GPU MODE Lecture 39 — TorchTitan",
+        "url": "https://www.youtube.com/watch?v=VYWRjcUqW6w"
+      },
+      {
+        "label": "TorchTitan — clean modern reference",
+        "url": "https://github.com/pytorch/torchtitan"
+      }
     ]
   },
   {
@@ -281,12 +406,19 @@
     "title": "Inference fundamentals — prefill vs decode, KV cache",
     "status": "upcoming",
     "phase": "Phase 3 · D24",
-    "task": "Hand-rolled KV-cache generation loop on a small Llama; prove decode is memory-bound, then show how batch size, GQA, and quant move the roofline.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "CS336 Lecture 10 — Inference", "url": "https://www.youtube.com/watch?v=fcgPYo3OtV0" },
-      { "label": "Lilian Weng — Large Transformer Model Inference Optimization", "url": "https://lilianweng.github.io/posts/2023-01-10-inference-optimization/" },
-      { "label": "Inside vLLM: Anatomy of a High-Throughput Inference System", "url": "https://vllm.ai/blog/2025-09-05-anatomy-of-vllm" }
+      {
+        "label": "CS336 Lecture 10 — Inference",
+        "url": "https://www.youtube.com/watch?v=fcgPYo3OtV0"
+      },
+      {
+        "label": "Lilian Weng — Large Transformer Model Inference Optimization",
+        "url": "https://lilianweng.github.io/posts/2023-01-10-inference-optimization/"
+      },
+      {
+        "label": "Inside vLLM: Anatomy of a High-Throughput Inference System",
+        "url": "https://vllm.ai/blog/2025-09-05-anatomy-of-vllm"
+      }
     ]
   },
   {
@@ -294,11 +426,15 @@
     "title": "Build: paged KV cache (PagedAttention)",
     "status": "upcoming",
     "phase": "Phase 3 · D25",
-    "task": "Paged KV cache by hand — allocator, block table, free list, COW for shared prefixes (your CS162 paging maps 1:1); measure fragmentation recovered.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "PagedAttention / vLLM (arXiv:2309.06180)", "url": "https://arxiv.org/abs/2309.06180" },
-      { "label": "vLLM V1 KV-cache / block code (vllm/v1/core)", "url": "https://github.com/vllm-project/vllm/tree/main/vllm/v1/core" }
+      {
+        "label": "PagedAttention / vLLM (arXiv:2309.06180)",
+        "url": "https://arxiv.org/abs/2309.06180"
+      },
+      {
+        "label": "vLLM V1 KV-cache / block code (vllm/v1/core)",
+        "url": "https://github.com/vllm-project/vllm/tree/main/vllm/v1/core"
+      }
     ]
   },
   {
@@ -306,11 +442,15 @@
     "title": "Build: continuous-batching scheduler (Orca)",
     "status": "upcoming",
     "phase": "Phase 3 · D26",
-    "task": "Iteration-level admit/preempt scheduler on the paged cache; stress it past KV-cache capacity — when to preempt vs queue, and how to avoid preemption thrash.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "Orca (OSDI '22) — iteration-level scheduling", "url": "https://www.usenix.org/conference/osdi22/presentation/yu" },
-      { "label": "vLLM V1 scheduler source", "url": "https://github.com/vllm-project/vllm/blob/main/vllm/v1/core/sched/scheduler.py" }
+      {
+        "label": "Orca (OSDI '22) — iteration-level scheduling",
+        "url": "https://www.usenix.org/conference/osdi22/presentation/yu"
+      },
+      {
+        "label": "vLLM V1 scheduler source",
+        "url": "https://github.com/vllm-project/vllm/blob/main/vllm/v1/core/sched/scheduler.py"
+      }
     ]
   },
   {
@@ -318,11 +458,15 @@
     "title": "Build: radix-tree prefix cache (RadixAttention)",
     "status": "upcoming",
     "phase": "Phase 3 · D27",
-    "task": "Radix-tree prefix cache; benchmark a shared-prefix (few-shot) workload and show the hit-rate / throughput gain, tree on vs off.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "SGLang / RadixAttention (arXiv:2312.07104)", "url": "https://arxiv.org/abs/2312.07104" },
-      { "label": "SGLang radix cache source", "url": "https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/mem_cache/radix_cache.py" }
+      {
+        "label": "SGLang / RadixAttention (arXiv:2312.07104)",
+        "url": "https://arxiv.org/abs/2312.07104"
+      },
+      {
+        "label": "SGLang radix cache source",
+        "url": "https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/mem_cache/radix_cache.py"
+      }
     ]
   },
   {
@@ -330,33 +474,45 @@
     "title": "Build: OpenAI-compatible server + CUDA graphs",
     "status": "upcoming",
     "phase": "Phase 3 · D28",
-    "task": "FastAPI OpenAI-compatible server (reuse your Prometheus/Grafana/Locust stack); add CUDA graphs for decode to kill launch overhead (the D1 launch-bound thread) and measure the win; stand up a ShareGPT harness.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "CUDA graphs in PyTorch", "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-graphs" },
-      { "label": "NVIDIA — Getting Started with CUDA Graphs", "url": "https://developer.nvidia.com/blog/cuda-graphs/" }
+      {
+        "label": "CUDA graphs in PyTorch",
+        "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-graphs"
+      },
+      {
+        "label": "NVIDIA — Getting Started with CUDA Graphs",
+        "url": "https://developer.nvidia.com/blog/cuda-graphs/"
+      }
     ]
   },
   {
     "date": "2026-07-14",
     "title": "Benchmark vs vLLM — per-feature attribution",
     "status": "upcoming",
-    "phase": "Phase 3 · D29",
-    "task": "Benchmark vs vLLM (throughput/TTFT/TPOT) under load; ablate each feature's contribution and give a mechanistic, profile-backed reason for every gap. This attribution is the strongest interview asset here.",
-    "repo": "alex1xu/nano-inference-engine"
+    "phase": "Phase 3 · D29"
   },
   {
     "date": "2026-07-15",
     "title": "Quantization — weight-only W4A16 (GPTQ/AWQ)",
     "status": "upcoming",
     "phase": "Phase 3 · D30",
-    "task": "AWQ/GPTQ a model (reference repos); integrate W4A16 into your linears and prove the matmul is memory-bound so quant actually buys bandwidth (not a slow dequant path).",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "GPTQ (arXiv:2210.17323)", "url": "https://arxiv.org/abs/2210.17323" },
-      { "label": "AWQ (arXiv:2306.00978)", "url": "https://arxiv.org/abs/2306.00978" },
-      { "label": "MIT 6.5940 — quantization lectures", "url": "https://hanlab.mit.edu/courses/2024-fall-65940" },
-      { "label": "GPU MODE Lecture 7 — Advanced Quantization", "url": "https://www.youtube.com/watch?v=1u9xUK3G4VM" }
+      {
+        "label": "GPTQ (arXiv:2210.17323)",
+        "url": "https://arxiv.org/abs/2210.17323"
+      },
+      {
+        "label": "AWQ (arXiv:2306.00978)",
+        "url": "https://arxiv.org/abs/2306.00978"
+      },
+      {
+        "label": "MIT 6.5940 — quantization lectures",
+        "url": "https://hanlab.mit.edu/courses/2024-fall-65940"
+      },
+      {
+        "label": "GPU MODE Lecture 7 — Advanced Quantization",
+        "url": "https://www.youtube.com/watch?v=1u9xUK3G4VM"
+      }
     ]
   },
   {
@@ -364,14 +520,27 @@
     "title": "Build: speculative decoding (correct rejection sampling)",
     "status": "upcoming",
     "phase": "Phase 3 · D31",
-    "task": "Draft-model speculative decoding with the exact modified rejection-sampling rule (Leviathan §3.1); measure acceptance rate + end-to-end speedup and prove the output distribution is preserved. The one deep optional — do it right.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "Speculative decoding (Leviathan et al., arXiv:2211.17192)", "url": "https://arxiv.org/abs/2211.17192" },
-      { "label": "Medusa (arXiv:2401.10774)", "url": "https://arxiv.org/abs/2401.10774" },
-      { "label": "EAGLE (arXiv:2401.15077)", "url": "https://arxiv.org/abs/2401.15077" },
-      { "label": "EAGLE-2 (arXiv:2406.16858)", "url": "https://arxiv.org/abs/2406.16858" },
-      { "label": "GPU MODE Lecture 22 — Speculative Decoding in vLLM", "url": "https://www.youtube.com/watch?v=9wNAgpX6z_4" }
+      {
+        "label": "Speculative decoding (Leviathan et al., arXiv:2211.17192)",
+        "url": "https://arxiv.org/abs/2211.17192"
+      },
+      {
+        "label": "Medusa (arXiv:2401.10774)",
+        "url": "https://arxiv.org/abs/2401.10774"
+      },
+      {
+        "label": "EAGLE (arXiv:2401.15077)",
+        "url": "https://arxiv.org/abs/2401.15077"
+      },
+      {
+        "label": "EAGLE-2 (arXiv:2406.16858)",
+        "url": "https://arxiv.org/abs/2406.16858"
+      },
+      {
+        "label": "GPU MODE Lecture 22 — Speculative Decoding in vLLM",
+        "url": "https://www.youtube.com/watch?v=9wNAgpX6z_4"
+      }
     ]
   },
   {
@@ -379,41 +548,55 @@
     "title": "Low-bit kernels + chunked-prefill design",
     "status": "upcoming",
     "phase": "Phase 3 · D32",
-    "task": "INT8/FP8 quantized matmul in Triton; prototype chunked prefill with a goodput-under-SLO analysis; document a full prefill/decode disaggregation design even if you ship only chunked prefill.",
-    "repo": "alex1xu/nano-inference-engine",
     "links": [
-      { "label": "SmoothQuant (arXiv:2211.10438)", "url": "https://arxiv.org/abs/2211.10438" },
-      { "label": "FP8 Formats for Deep Learning (arXiv:2209.05433)", "url": "https://arxiv.org/abs/2209.05433" },
-      { "label": "GPU MODE Lecture 34 — Low-Bit Triton Kernels", "url": "https://www.youtube.com/watch?v=7c3c3bCGzKU" },
-      { "label": "Sarathi-Serve — chunked prefill (arXiv:2403.02310)", "url": "https://arxiv.org/abs/2403.02310" },
-      { "label": "DistServe (arXiv:2401.09670)", "url": "https://arxiv.org/abs/2401.09670" },
-      { "label": "NVIDIA Dynamo — KV-aware routing in production", "url": "https://github.com/ai-dynamo/dynamo" }
+      {
+        "label": "SmoothQuant (arXiv:2211.10438)",
+        "url": "https://arxiv.org/abs/2211.10438"
+      },
+      {
+        "label": "FP8 Formats for Deep Learning (arXiv:2209.05433)",
+        "url": "https://arxiv.org/abs/2209.05433"
+      },
+      {
+        "label": "GPU MODE Lecture 34 — Low-Bit Triton Kernels",
+        "url": "https://www.youtube.com/watch?v=7c3c3bCGzKU"
+      },
+      {
+        "label": "Sarathi-Serve — chunked prefill (arXiv:2403.02310)",
+        "url": "https://arxiv.org/abs/2403.02310"
+      },
+      {
+        "label": "DistServe (arXiv:2401.09670)",
+        "url": "https://arxiv.org/abs/2401.09670"
+      },
+      {
+        "label": "NVIDIA Dynamo — KV-aware routing in production",
+        "url": "https://github.com/ai-dynamo/dynamo"
+      }
     ]
   },
   {
     "date": "2026-07-20",
     "title": "Engine hardening + ablation pass",
     "status": "upcoming",
-    "phase": "Phase 3 · D33",
-    "task": "Buffer/hardening: close or rigorously explain remaining vLLM gaps, run the full ablation matrix, find the load level where the scheduler breaks, and reproduce your tracked OSS issue locally.",
-    "repo": "alex1xu/nano-inference-engine"
+    "phase": "Phase 3 · D33"
   },
   {
     "date": "2026-07-21",
     "title": "Ship: nano-inference-engine (flagship)",
     "status": "upcoming",
-    "phase": "Phase 3 · D34",
-    "task": "Finalize the flagship: paged attn + continuous batching + prefix cache + CUDA graphs + W4A16 + spec decoding, with a design doc, diagrams, vLLM benchmarks, and the honest gap analysis up top. Log post #4.",
-    "repo": "alex1xu/nano-inference-engine"
+    "phase": "Phase 3 · D34"
   },
   {
     "date": "2026-07-22",
     "title": "ML compiler landscape — torch.compile internals",
     "status": "upcoming",
     "phase": "Phase 4 · D35",
-    "task": "Trace the full Dynamo → Inductor → Triton path on your models; note where the compiler beats hand kernels and where it doesn't. (You already diffed torch.compile vs your FA kernel on D13.)",
     "links": [
-      { "label": "MLC course — TVM/IRModule, tensor-program optimization", "url": "https://mlc.ai/" }
+      {
+        "label": "MLC course — TVM/IRModule, tensor-program optimization",
+        "url": "https://mlc.ai/"
+      }
     ]
   },
   {
@@ -421,15 +604,31 @@
     "title": "Build: an MLIR pass (Toy → tt-mlir)",
     "status": "upcoming",
     "phase": "Phase 4 · D36",
-    "task": "Do the MLIR Toy tutorial (fast given CS164), then write a real folder/canonicalization pass for a TTIR op in tt-mlir (or an IREE experiment); map PyTorch→Inductor vs JAX→XLA vs MLIR-based stacks.",
-    "repo": "alex1xu/mlir-pass-experiments",
     "links": [
-      { "label": "MLIR paper (arXiv:2002.11054)", "url": "https://arxiv.org/abs/2002.11054" },
-      { "label": "MLIR Toy tutorial", "url": "https://mlir.llvm.org/docs/Tutorials/Toy/" },
-      { "label": "torch-mlir", "url": "https://github.com/llvm/torch-mlir" },
-      { "label": "tt-mlir (Tenstorrent)", "url": "https://github.com/tenstorrent/tt-mlir" },
-      { "label": "tt-mlir dialects — TTIR / TTNN / TTKernel", "url": "https://docs.tenstorrent.com/tt-mlir/dialects-overview.html" },
-      { "label": "IREE — MLIR-based compiler + runtime", "url": "https://github.com/iree-org/iree" }
+      {
+        "label": "MLIR paper (arXiv:2002.11054)",
+        "url": "https://arxiv.org/abs/2002.11054"
+      },
+      {
+        "label": "MLIR Toy tutorial",
+        "url": "https://mlir.llvm.org/docs/Tutorials/Toy/"
+      },
+      {
+        "label": "torch-mlir",
+        "url": "https://github.com/llvm/torch-mlir"
+      },
+      {
+        "label": "tt-mlir (Tenstorrent)",
+        "url": "https://github.com/tenstorrent/tt-mlir"
+      },
+      {
+        "label": "tt-mlir dialects — TTIR / TTNN / TTKernel",
+        "url": "https://docs.tenstorrent.com/tt-mlir/dialects-overview.html"
+      },
+      {
+        "label": "IREE — MLIR-based compiler + runtime",
+        "url": "https://github.com/iree-org/iree"
+      }
     ]
   },
   {
@@ -437,10 +636,15 @@
     "title": "Accelerator architectures — SIMT vs dataflow vs systolic",
     "status": "upcoming",
     "phase": "Phase 4 · D37",
-    "task": "Comparative analysis: SIMT (GPU) vs dataflow (Tenstorrent/SambaNova) vs systolic (TPU/MXU, Groq, Cerebras, Etched, MatX), with the numeric-format co-design angle (lean on EECS151). Log post #5.",
     "links": [
-      { "label": "GPU MODE Lecture 84 — Numerics and AI (Micikevicius)", "url": "https://www.youtube.com/watch?v=ua2NhlenIKo" },
-      { "label": "GPU MODE Lecture 37 — SASS & GPU Microarchitecture", "url": "https://www.youtube.com/watch?v=we3i5VuoPWk" }
+      {
+        "label": "GPU MODE Lecture 84 — Numerics and AI (Micikevicius)",
+        "url": "https://www.youtube.com/watch?v=ua2NhlenIKo"
+      },
+      {
+        "label": "GPU MODE Lecture 37 — SASS & GPU Microarchitecture",
+        "url": "https://www.youtube.com/watch?v=we3i5VuoPWk"
+      }
     ]
   },
   {
@@ -448,41 +652,45 @@
     "title": "OSS — build from source + reproduce issue",
     "status": "upcoming",
     "phase": "Phase 4 · D38",
-    "task": "Build your chosen repo from source (vLLM / SGLang / tt-metal), run the tests, read CONTRIBUTING, and reproduce the issue you've tracked since June. Keep a self-directed kernel as fallback.",
     "links": [
-      { "label": "tt-metal bounty issues", "url": "https://github.com/tenstorrent/tt-metal/labels/bounty" },
-      { "label": "TT-Metalium programming guide", "url": "https://github.com/tenstorrent/tt-metal/blob/main/METALIUM_GUIDE.md" }
+      {
+        "label": "tt-metal bounty issues",
+        "url": "https://github.com/tenstorrent/tt-metal/labels/bounty"
+      },
+      {
+        "label": "TT-Metalium programming guide",
+        "url": "https://github.com/tenstorrent/tt-metal/blob/main/METALIUM_GUIDE.md"
+      }
     ]
   },
   {
     "date": "2026-07-28",
     "title": "OSS — implement",
     "status": "upcoming",
-    "phase": "Phase 4 · D39",
-    "task": "Implement the fix/feature/kernel; add tests; benchmark if it's a perf change."
+    "phase": "Phase 4 · D39"
   },
   {
     "date": "2026-07-29",
     "title": "OSS — open the PR",
     "status": "upcoming",
-    "phase": "Phase 4 · D40",
-    "task": "Open the PR — clear description, tests, benchmark numbers; respond to maintainer review. Bar = a well-tested PR in review. Link it from your site."
+    "phase": "Phase 4 · D40"
   },
   {
     "date": "2026-07-30",
     "title": "Buffer + first OSS iteration",
     "status": "upcoming",
-    "phase": "Phase 4 · D41",
-    "task": "Iterate on review feedback, fix CI, and absorb any Phase 3–4 slippage before the August tracks begin."
+    "phase": "Phase 4 · D41"
   },
   {
     "date": "2026-07-31",
     "title": "Phase recap + August setup",
     "status": "upcoming",
     "phase": "Phase 4 · D42",
-    "task": "Consolidate the four core repos; apply to TPU Research Cloud now so a pod is ready for the JAX track; write a short mid-summer recap.",
     "links": [
-      { "label": "TPU Research Cloud (free TPU access)", "url": "https://sites.research.google/trc/about/" }
+      {
+        "label": "TPU Research Cloud (free TPU access)",
+        "url": "https://sites.research.google/trc/about/"
+      }
     ]
   },
   {
@@ -490,12 +698,23 @@
     "title": "JAX fundamentals — jit / grad / vmap / scan",
     "status": "upcoming",
     "phase": "Phase 5 · D43",
-    "task": "Learn the functional/transform model (jit, grad, vmap, scan, PyTrees); port a small model (e.g. a nanoGPT-scale forward pass) to JAX/Flax; confirm your TPU access works.",
     "links": [
-      { "label": "JAX docs", "url": "https://docs.jax.dev/en/latest/" },
-      { "label": "JAX key concepts — tracers, jaxprs, transforms", "url": "https://docs.jax.dev/en/latest/key-concepts.html" },
-      { "label": "JAX control flow — scan / lax", "url": "https://docs.jax.dev/en/latest/control-flow.html" },
-      { "label": "Kaggle TPU notebooks (free v3-8)", "url": "https://www.kaggle.com/docs/tpu" }
+      {
+        "label": "JAX docs",
+        "url": "https://docs.jax.dev/en/latest/"
+      },
+      {
+        "label": "JAX key concepts — tracers, jaxprs, transforms",
+        "url": "https://docs.jax.dev/en/latest/key-concepts.html"
+      },
+      {
+        "label": "JAX control flow — scan / lax",
+        "url": "https://docs.jax.dev/en/latest/control-flow.html"
+      },
+      {
+        "label": "Kaggle TPU notebooks (free v3-8)",
+        "url": "https://www.kaggle.com/docs/tpu"
+      }
     ]
   },
   {
@@ -503,30 +722,37 @@
     "title": "Pallas — the TPU kernel model",
     "status": "upcoming",
     "phase": "Phase 5 · D44",
-    "task": "Learn Pallas (the TPU kernel language); read the TPU FlashAttention reference and map it onto the MXU / VMEM model.",
     "links": [
-      { "label": "Pallas docs", "url": "https://docs.jax.dev/en/latest/pallas/index.html" },
-      { "label": "Pallas TPU FlashAttention reference", "url": "https://github.com/jax-ml/jax/blob/main/jax/experimental/pallas/ops/tpu/flash_attention.py" }
+      {
+        "label": "Pallas docs",
+        "url": "https://docs.jax.dev/en/latest/pallas/index.html"
+      },
+      {
+        "label": "Pallas TPU FlashAttention reference",
+        "url": "https://github.com/jax-ml/jax/blob/main/jax/experimental/pallas/ops/tpu/flash_attention.py"
+      }
     ]
   },
   {
     "date": "2026-08-05",
     "title": "Build: FlashAttention forward in Pallas",
     "status": "upcoming",
-    "phase": "Phase 5 · D45",
-    "task": "Port your Triton FA-2 forward to Pallas on a TPU; benchmark vs jax.nn.dot_product_attention. Converts your crown-jewel kernel into TPU evidence.",
-    "repo": "alex1xu/flash-attention-pallas"
+    "phase": "Phase 5 · D45"
   },
   {
     "date": "2026-08-06",
     "title": "Build: shard_map / GSPMD distributed example",
     "status": "upcoming",
     "phase": "Phase 5 · D46",
-    "task": "Shard a small transformer two ways — GSPMD (NamedSharding, XLA inserts collectives) and explicit shard_map (manual psum/all_gather); show parity and read the collectives in the HLO.",
-    "repo": "alex1xu/jax-tpu-parallelism",
     "links": [
-      { "label": "JAX shard_map — manual parallelism", "url": "https://docs.jax.dev/en/latest/notebooks/shard_map.html" },
-      { "label": "Distributed arrays & automatic parallelization (GSPMD, Mesh, PartitionSpec)", "url": "https://docs.jax.dev/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html" }
+      {
+        "label": "JAX shard_map — manual parallelism",
+        "url": "https://docs.jax.dev/en/latest/notebooks/shard_map.html"
+      },
+      {
+        "label": "Distributed arrays & automatic parallelization (GSPMD, Mesh, PartitionSpec)",
+        "url": "https://docs.jax.dev/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html"
+      }
     ]
   },
   {
@@ -534,148 +760,147 @@
     "title": "XLA / StableHLO + TPU profiler",
     "status": "upcoming",
     "phase": "Phase 5 · D47",
-    "task": "Inspect lowered IR — jit(fn).lower().as_text() (StableHLO) then .compile() (HLO); find a fusion + the MXU matmul, and profile a step on the TPU profiler. The TPU counterpart to your Nsight day.",
     "links": [
-      { "label": "JAX ahead-of-time lowering & compilation (lower / as_text)", "url": "https://docs.jax.dev/en/latest/aot.html" },
-      { "label": "JAX profiling (TPU profiler / TensorBoard)", "url": "https://docs.jax.dev/en/latest/profiling.html" }
+      {
+        "label": "JAX ahead-of-time lowering & compilation (lower / as_text)",
+        "url": "https://docs.jax.dev/en/latest/aot.html"
+      },
+      {
+        "label": "JAX profiling (TPU profiler / TensorBoard)",
+        "url": "https://docs.jax.dev/en/latest/profiling.html"
+      }
     ]
   },
   {
     "date": "2026-08-10",
     "title": "Study: reproduce + ablate FA2's speedup curve",
     "status": "upcoming",
-    "phase": "Phase 5 · D48",
-    "task": "Research-style study (the DeepMind RE signal): reproduce FA2's forward speedup curve, ablate one design choice (block size / online-softmax vs two-pass), and report how the curve moves vs the paper. The deliverable is the finding.",
-    "repo": "alex1xu/flash-attention-pallas"
+    "phase": "Phase 5 · D48"
   },
   {
     "date": "2026-08-11",
     "title": "Build: stretch — multi-host shard_map scaling",
     "status": "upcoming",
-    "phase": "Phase 5 · D49",
-    "task": "If TRC came through: run shard_map across a v3-8's cores; show a throughput curve + the ICI collective in the trace. Almost no new-grad applicant has touched real TPU topology.",
-    "repo": "alex1xu/jax-tpu-parallelism"
+    "phase": "Phase 5 · D49"
   },
   {
     "date": "2026-08-12",
     "title": "Ship: JAX/TPU track + writeup",
     "status": "upcoming",
-    "phase": "Phase 5 · D50",
-    "task": "Polish flash-attention-pallas + the shard_map repo with TPU benchmark numbers; write the JAX-vs-PyTorch-distributed contrast post. Log post #6.",
-    "repo": "alex1xu/flash-attention-pallas"
+    "phase": "Phase 5 · D50"
   },
   {
     "date": "2026-08-13",
     "title": "Low-precision numerics — MX formats & co-design",
     "status": "upcoming",
     "phase": "Phase 6 · D51",
-    "task": "Study the co-design variables: FP8 E4M3 vs E5M2 range, MXFP4/6 block scaling, accumulator width, stochastic vs RNE rounding, error accumulation in a K-deep reduction.",
     "links": [
-      { "label": "OCP Microscaling (MX) formats spec v1.0", "url": "https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf" },
-      { "label": "Microscaling Data Formats for Deep Learning (arXiv:2310.10537)", "url": "https://arxiv.org/abs/2310.10537" },
-      { "label": "Stochastic rounding — Gupta et al. (arXiv:1502.02551)", "url": "https://arxiv.org/abs/1502.02551" }
+      {
+        "label": "OCP Microscaling (MX) formats spec v1.0",
+        "url": "https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf"
+      },
+      {
+        "label": "Microscaling Data Formats for Deep Learning (arXiv:2310.10537)",
+        "url": "https://arxiv.org/abs/2310.10537"
+      },
+      {
+        "label": "Stochastic rounding — Gupta et al. (arXiv:1502.02551)",
+        "url": "https://arxiv.org/abs/1502.02551"
+      }
     ]
   },
   {
     "date": "2026-08-14",
     "title": "Build: block-scaled MXFP4/FP8 GEMM from scratch",
     "status": "upcoming",
-    "phase": "Phase 6 · D52",
-    "task": "MXFP4 (and/or FP8 E4M3) matmul from scratch — block scaling, quant/dequant path, explicit accumulator precision — as a Triton kernel so it runs and benchmarks. The MatX/Etched bullseye.",
-    "repo": "alex1xu/low-precision-gemm"
+    "phase": "Phase 6 · D52"
   },
   {
     "date": "2026-08-17",
     "title": "Build: numerics co-design study",
     "status": "upcoming",
-    "phase": "Phase 6 · D53",
-    "task": "Plot output error vs format (FP32/BF16 accumulation, block size, SR vs RNE, E4M3 vs E5M2) on a real weight/activation distribution; write the accumulator-width + per-block-scaling co-design conclusion.",
-    "repo": "alex1xu/low-precision-gemm"
+    "phase": "Phase 6 · D53"
   },
   {
     "date": "2026-08-18",
     "title": "tt-metal — the Metalium kernel model",
     "status": "upcoming",
     "phase": "Phase 6 · D54",
-    "task": "Work the tt-metal programming examples on the Metalium simulator (no hardware needed) — circular buffers, explicit NoC data movement, tile-based math.",
-    "repo": "alex1xu/tt-metal-kernel",
     "links": [
-      { "label": "tt-metal programming examples", "url": "https://github.com/tenstorrent/tt-metal/tree/main/tt_metal/programming_examples" }
+      {
+        "label": "tt-metal programming examples",
+        "url": "https://github.com/tenstorrent/tt-metal/tree/main/tt_metal/programming_examples"
+      }
     ]
   },
   {
     "date": "2026-08-19",
     "title": "Build: a tt-metal compute kernel",
     "status": "upcoming",
-    "phase": "Phase 6 · D55",
-    "task": "Write + run a tt-metal compute kernel (tiled eltwise or small matmul) using circular buffers + explicit NoC moves. Proves you can build for non-CUDA dataflow silicon.",
-    "repo": "alex1xu/tt-metal-kernel"
+    "phase": "Phase 6 · D55"
   },
   {
     "date": "2026-08-20",
     "title": "Build: CuTe / CUTLASS tiled GEMM",
     "status": "upcoming",
     "phase": "Phase 6 · D56",
-    "task": "CuTe tiled GEMM with explicit TiledMMA / TiledCopy; benchmark vs your Triton matmul. The on-GPU proxy for the tile / data-movement-explicit thinking chip stacks force.",
-    "repo": "alex1xu/cute-gemm",
     "links": [
-      { "label": "CUTLASS", "url": "https://github.com/NVIDIA/cutlass" },
-      { "label": "Getting Started with CuTe", "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/00_quickstart.html" }
+      {
+        "label": "CUTLASS",
+        "url": "https://github.com/NVIDIA/cutlass"
+      },
+      {
+        "label": "Getting Started with CuTe",
+        "url": "https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/00_quickstart.html"
+      }
     ]
   },
   {
     "date": "2026-08-21",
     "title": "Ship: chip / numerics track + writeup",
     "status": "upcoming",
-    "phase": "Phase 6 · D57",
-    "task": "Polish low-precision-gemm + tt-metal-kernel + cute-gemm; write the 'SIMT vs dataflow vs systolic, in practice' post — far stronger than a literature survey. Log post #7.",
-    "repo": "alex1xu/low-precision-gemm"
+    "phase": "Phase 6 · D57"
   },
   {
     "date": "2026-08-24",
     "title": "Capstone: nanochat end-to-end",
     "status": "upcoming",
     "phase": "Phase 7 · D58",
-    "task": "Run the full nanochat pipeline on 8×H100. Mandatory stretch (not optional): drop in your Triton FA kernel or quantize inference with your engine, and measure the end-to-end delta — this proves the summer compounded.",
-    "repo": "alex1xu/nanochat-run",
     "links": [
-      { "label": "nanochat — full pipeline (~$73, ~3 hrs on 8×H100)", "url": "https://github.com/karpathy/nanochat" }
+      {
+        "label": "nanochat — full pipeline (~$73, ~3 hrs on 8×H100)",
+        "url": "https://github.com/karpathy/nanochat"
+      }
     ]
   },
   {
     "date": "2026-08-25",
     "title": "OSS — land the merge / second PR",
     "status": "upcoming",
-    "phase": "Phase 7 · D59",
-    "task": "Push the July PR to merged (or strong in-review); if landed, open a second. A merged PR to a real stack is your single highest-signal, externally-validated artifact."
+    "phase": "Phase 7 · D59"
   },
   {
     "date": "2026-08-26",
     "title": "Outside review of the flagship",
     "status": "upcoming",
-    "phase": "Phase 7 · D60",
-    "task": "Get an experienced systems engineer to tear into nano-inference-engine; address the findings publicly in the repo. Answers a manager's main worry about a no-internship candidate.",
-    "repo": "alex1xu/nano-inference-engine"
+    "phase": "Phase 7 · D60"
   },
   {
     "date": "2026-08-27",
     "title": "Portfolio consolidation",
     "status": "upcoming",
-    "phase": "Phase 7 · D61",
-    "task": "Pin the repos on GitHub + your site; make every README lead with a reproducible benchmark + a utilization/roofline number; tighten the learning log."
+    "phase": "Phase 7 · D61"
   },
   {
     "date": "2026-08-28",
     "title": "Retrospective post",
     "status": "upcoming",
-    "phase": "Phase 7 · D62",
-    "task": "Write the capstone retrospective tying the arc together — kernels → distributed → inference → JAX/TPU → silicon — with the numbers and what's next. Cross-post."
+    "phase": "Phase 7 · D62"
   },
   {
     "date": "2026-08-31",
     "title": "What's next — open threads to pull",
     "status": "upcoming",
-    "phase": "Beyond the sprint · D63",
-    "task": "Forward list: deeper CuTe/CUTLASS, multi-node (≥2-node) interconnect study, full prefill/decode disaggregation with KV transfer, RLHF/GRPO infra on your engine, Rust for systems, deeper MLIR/IREE, evals infra, and the company-specific deep dive you choose."
+    "phase": "Beyond the sprint · D63"
   }
 ]
