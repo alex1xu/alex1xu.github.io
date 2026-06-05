@@ -2,7 +2,7 @@
   {
     "date": "2026-06-01",
     "title": "GPU execution & memory model",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 0 · D1",
     "items": [
       "Horace He, Making Deep Learning Go Brrrr",
@@ -40,7 +40,7 @@
   {
     "date": "2026-06-02",
     "title": "CUDA C basics — first kernels",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 0 · D2",
     "items": [
       "GPU MODE Lecture 3 — Getting Started with CUDA (Jeremy Howard)",
@@ -61,7 +61,7 @@
   {
     "date": "2026-06-03",
     "title": "Memory hierarchy, tiling, coalescing",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 0 · D3",
     "items": [
       "PMPP Ch 5 — memory architecture & data locality (tiled matmul)",
