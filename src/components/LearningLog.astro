@@ -4,8 +4,8 @@ import learning from '../data/learning.json';
 type Status = 'done' | 'upcoming';
 interface Link { label: string; url: string; }
 interface Entry {
-  date: string; title: string; items: string[];
-  status: Status; phase?: string; links?: Link[]; blog?: string;
+  date: string; title: string; items?: string[];
+  status: Status; phase?: string; task?: string; repo?: string; links?: Link[]; blog?: string;
 }
 const entries = learning as Entry[];
 
@@ -37,7 +37,7 @@ const cellStatus = (es: Entry[]): Status => es.some(e => e.status === 'upcoming'
 const popoverData = Object.fromEntries(
   [...byDate.entries()].map(([date, es]) => [
     date,
-    es.map(e => ({ title: e.title, phase: e.phase ?? '', links: e.links ?? [] }))
+    es.map(e => ({ title: e.title, phase: e.phase ?? '', task: e.task ?? '', repo: e.repo ?? '', links: e.links ?? [] }))
   ])
 );
 ---
@@ -69,6 +69,8 @@ const popoverData = Object.fromEntries(
               <span class="log-title">{e.title}</span>
             </div>
             {e.phase && <div class="log-phase">{e.phase}</div>}
+            {e.task && <div class="log-task">{e.task}</div>}
+            {e.repo && <a class="log-repo" href={`https://github.com/${e.repo}`} target="_blank" rel="noopener noreferrer">↗ {e.repo}</a>}
             {e.links && e.links.length > 0 && (
               <ul class="log-links">
                 {e.links.map(l => (
@@ -123,7 +125,7 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
   const filters = log.querySelector<HTMLElement>('.log-filters')!;
   const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
   const popoverEl = log.querySelector<HTMLElement>('.cal-popover')!;
-  const popoverData: Record<string, Array<{title:string; phase:string; links:{label:string;url:string}[]}>> =
+  const popoverData: Record<string, Array<{title:string; phase:string; task:string; repo:string; links:{label:string;url:string}[]}>> =
     JSON.parse(log.dataset.popover || '{}');
 
   let view = 'list', filter = 'upcoming', expanded = false;
@@ -163,7 +165,9 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
             `<li><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}</a></li>`
           ).join('')}</ul>`
         : '';
-      return `<div class="pop-item"><strong>${item.title}</strong>${item.phase ? `<div class="pop-phase">${item.phase}</div>` : ''}${linksHtml}</div>`;
+      const taskHtml = item.task ? `<div class="pop-task">${item.task}</div>` : '';
+      const repoHtml = item.repo ? `<a class="pop-repo" href="https://github.com/${item.repo}" target="_blank" rel="noopener noreferrer">↗ ${item.repo}</a>` : '';
+      return `<div class="pop-item"><strong>${item.title}</strong>${item.phase ? `<div class="pop-phase">${item.phase}</div>` : ''}${taskHtml}${repoHtml}${linksHtml}</div>`;
     }).join('');
   }
 
