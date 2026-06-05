@@ -381,7 +381,7 @@
   },
   {
     "date": "2026-07-03",
-    "title": "Integrate: train a small GPT in parallel (8×H100)",
+    "title": "train a small GPT in parallel (8×H100)",
     "status": "upcoming",
     "phase": "Phase 2 · D22"
   },
@@ -649,7 +649,7 @@
   },
   {
     "date": "2026-07-27",
-    "title": "OSS — build from source + reproduce issue",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D38",
     "links": [
@@ -665,19 +665,19 @@
   },
   {
     "date": "2026-07-28",
-    "title": "OSS — implement",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D39"
   },
   {
     "date": "2026-07-29",
-    "title": "OSS — open the PR",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D40"
   },
   {
     "date": "2026-07-30",
-    "title": "Buffer + first OSS iteration",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D41"
   },
@@ -875,31 +875,31 @@
   },
   {
     "date": "2026-08-25",
-    "title": "OSS — land the merge / second PR",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 7 · D59"
   },
   {
     "date": "2026-08-26",
-    "title": "Outside review of the flagship",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 7 · D60"
   },
   {
     "date": "2026-08-27",
-    "title": "Portfolio consolidation",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 7 · D61"
   },
   {
     "date": "2026-08-28",
-    "title": "Retrospective post",
+    "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 7 · D62"
   },
   {
     "date": "2026-08-31",
-    "title": "What's next — open threads to pull",
+    "title": "To be continued",
     "status": "upcoming",
     "phase": "Beyond the sprint · D63"
   }
