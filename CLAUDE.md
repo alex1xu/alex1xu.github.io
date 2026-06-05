@@ -47,15 +47,16 @@ Filename = URL slug (`hello-world.mdx` → `/blog/hello-world`). Every post gets
 
 ```json
 { "date": "2026-06-20", "title": "Short heading", "status": "upcoming",
-  "items": ["topic or paper", "another"], "blog": "optional-post-slug" }
+  "phase": "Phase 0 · D1",
+  "links": [{ "label": "topic or paper", "url": "https://..." }] }
 ```
 
 - `status`: `"upcoming"` or `"done"` (only two).
-- `items`: bullet list of topics/papers for that day.
-- `links` (optional): array of `{"label": "...", "url": "..."}` — shown clickable in list view and in the calendar hover/click popover.
-- `blog` (optional): a post slug to link "Read the write-up →".
+- `links` (optional): array of `{"label": "...", "url": "..."}` — the day's study/resource list, shown clickable in the list view and the calendar hover/click popover. Keep labels descriptive (they stand in for a separate bullet list) and don't repeat a URL already used on another day.
 - `phase` (optional): label like `"Phase 0 · D1"` shown as a subdued line.
-- The List view shows the next **4** upcoming with a "Show more" toggle and Upcoming/Done filter; the Calendar view renders a month grid with click/hover popovers. Both derive entirely from this file.
+- `repo` (optional): an `owner/name` string. The repo chip is currently commented out in `LearningLog.astro` — uncomment it there to surface repos.
+- `blog` (optional): a post slug to link "Read the write-up →".
+- The List view shows the next **5** upcoming with a "Show more" toggle and Upcoming/Done filter; the Calendar view renders a month grid with click/hover popovers. Both derive entirely from this file.
 
 ## Voice & style — blog posts and site content ONLY
 
