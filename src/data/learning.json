@@ -29,7 +29,7 @@
   },
   {
     "date": "2026-06-02",
-    "title": "CUDA C — threads, blocks, first kernels",
+    "title": "CUDA C",
     "status": "done",
     "phase": "Phase 0 · D2",
     "links": [
@@ -45,7 +45,7 @@
   },
   {
     "date": "2026-06-03",
-    "title": "Memory hierarchy — tiling & coalescing",
+    "title": "Memory hierarchy (tiling & coalescing)",
     "status": "done",
     "phase": "Phase 0 · D3",
     "links": [
@@ -61,7 +61,7 @@
   },
   {
     "date": "2026-06-04",
-    "title": "Profiling deep-dive — Nsight + torch profiler",
+    "title": "Profiling deep-dive (Nsight + torch profiler)",
     "status": "done",
     "phase": "Phase 0 · D4",
     "links": [
@@ -213,7 +213,7 @@
   },
   {
     "date": "2026-06-17",
-    "title": "Ship: flash-attention-triton (+ torch.compile contrast)",
+    "title": "flash-attention-triton (+ torch.compile contrast)",
     "status": "upcoming",
     "phase": "Phase 1 · D13",
     "links": [
@@ -387,7 +387,7 @@
   },
   {
     "date": "2026-07-06",
-    "title": "Ship: mini-distributed-training (scaling study)",
+    "title": "mini-distributed-training",
     "status": "upcoming",
     "phase": "Phase 2 · D23",
     "links": [
@@ -583,7 +583,7 @@
   },
   {
     "date": "2026-07-21",
-    "title": "Ship: nano-inference-engine (flagship)",
+    "title": "nano-inference-engine",
     "status": "upcoming",
     "phase": "Phase 3 · D34"
   },
