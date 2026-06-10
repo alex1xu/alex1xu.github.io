@@ -90,7 +90,7 @@
   {
     "date": "2026-06-05",
     "title": "Parallel reduction kernel",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 0 · D5",
     "links": [
       {
@@ -106,7 +106,7 @@
   {
     "date": "2026-06-08",
     "title": "GPU kernels: occupancy and roofline",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 0 · D6",
     "links": [
       {
@@ -122,7 +122,7 @@
   {
     "date": "2026-06-09",
     "title": "Triton fundamentals",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D7",
     "links": [
       {
