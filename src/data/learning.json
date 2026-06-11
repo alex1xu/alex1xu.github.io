@@ -434,6 +434,22 @@
     ]
   },
   {
+    "date": "2026-07-07",
+    "title": "Attention variants for serving: MQA and GQA (KV-cache reduction)",
+    "status": "upcoming",
+    "phase": "Phase 3 · D24",
+    "links": [
+      {
+        "label": "Shazeer — Fast Transformer Decoding: One Write-Head is All You Need (MQA, 2019)",
+        "url": "https://arxiv.org/abs/1911.02150"
+      },
+      {
+        "label": "Ainslie et al. — GQA: Training Generalized Multi-Query Transformer Models (EMNLP 2023)",
+        "url": "https://arxiv.org/abs/2305.13245"
+      }
+    ]
+  },
+  {
     "date": "2026-07-08",
     "title": "Paged KV cache (PagedAttention)",
     "status": "upcoming",
