@@ -256,6 +256,10 @@
       {
         "label": "NCCL user guide",
         "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html"
+      },
+      {
+        "label": "Llama 3 — training-infra & networking (RoCE fabric at scale)",
+        "url": "https://arxiv.org/abs/2407.21783"
       }
     ]
   },
@@ -292,6 +296,10 @@
       {
         "label": "nanotron — minimal production-style reference",
         "url": "https://github.com/huggingface/nanotron"
+      },
+      {
+        "label": "DeepSpeed — the framework ZeRO ships in",
+        "url": "https://github.com/microsoft/DeepSpeed"
       }
     ]
   },
@@ -414,6 +422,30 @@
       {
         "label": "Inside vLLM: Anatomy of a High-Throughput Inference System",
         "url": "https://vllm.ai/blog/2025-09-05-anatomy-of-vllm"
+      },
+      {
+        "label": "KIVI — tuning-free 2-bit KV-cache quantization",
+        "url": "https://arxiv.org/abs/2402.02750"
+      },
+      {
+        "label": "TurboQuant — data-oblivious vector KV-cache quantization (ICLR 2026)",
+        "url": "https://arxiv.org/abs/2504.19874"
+      }
+    ]
+  },
+  {
+    "date": "2026-07-07",
+    "title": "Attention variants for serving: MQA and GQA (KV-cache reduction)",
+    "status": "upcoming",
+    "phase": "Phase 3 · D24",
+    "links": [
+      {
+        "label": "Shazeer — Fast Transformer Decoding: One Write-Head is All You Need (MQA, 2019)",
+        "url": "https://arxiv.org/abs/1911.02150"
+      },
+      {
+        "label": "Ainslie et al. — GQA: Training Generalized Multi-Query Transformer Models (EMNLP 2023)",
+        "url": "https://arxiv.org/abs/2305.13245"
       }
     ]
   },
@@ -624,6 +656,14 @@
       {
         "label": "IREE — MLIR-based compiler + runtime",
         "url": "https://github.com/iree-org/iree"
+      },
+      {
+        "label": "LLVM for Grad Students — IR primer (Sampson)",
+        "url": "https://www.cs.cornell.edu/~asampson/blog/llvm.html"
+      },
+      {
+        "label": "LLVM Language Reference",
+        "url": "https://llvm.org/docs/LangRef.html"
       }
     ]
   },
