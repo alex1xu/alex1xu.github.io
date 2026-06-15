@@ -146,7 +146,7 @@
   {
     "date": "2026-06-10",
     "title": "Triton matmul and autotuning",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D8",
     "links": [
       {
@@ -162,7 +162,7 @@
   {
     "date": "2026-06-11",
     "title": "FlashAttention: online softmax and IO-awareness",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D9",
     "links": [
       {
@@ -186,7 +186,7 @@
   {
     "date": "2026-06-12",
     "title": "FlashAttention forward kernel in Triton",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D10",
     "links": [
       {
@@ -198,7 +198,7 @@
   {
     "date": "2026-06-15",
     "title": "FlashAttention forward: correctness and benchmarking",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D11"
   },
   {
@@ -260,6 +260,14 @@
       {
         "label": "Llama 3 — training-infra & networking (RoCE fabric at scale)",
         "url": "https://arxiv.org/abs/2407.21783"
+      },
+      {
+        "label": "nccl-tests — measure ring / all-gather / reduce-scatter bandwidth (find the ring-vs-tree crossover; benchmark intra- vs inter-node)",
+        "url": "https://github.com/NVIDIA/nccl-tests"
+      },
+      {
+        "label": "NCCL environment variables — NCCL_DEBUG / NCCL_ALGO / NCCL_PROTO, topology (verify which algorithm runs, don't guess at SHARP)",
+        "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html"
       }
     ]
   },
@@ -402,6 +410,10 @@
       {
         "label": "TorchTitan — clean modern reference",
         "url": "https://github.com/pytorch/torchtitan"
+      },
+      {
+        "label": "How to Scale Your Model (DeepMind) — rooflines, collective costs, multi-host scaling (the two-tier intra/inter-node bandwidth cost model)",
+        "url": "https://jax-ml.github.io/scaling-book/"
       }
     ]
   },
