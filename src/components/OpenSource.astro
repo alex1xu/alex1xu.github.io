@@ -1,0 +1,27 @@
+---
+import oss from '../data/oss.json';
+
+type Status = 'open' | 'merged';
+interface PR { repo: string; number: number; title: string; url: string; status: Status; date: string; }
+const prs = (oss as { prs: PR[] }).prs;
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmt = (d: string) => { const [y, m, day] = d.split('-').map(Number); return `${MONTHS[m-1]} ${day}, ${y}`; };
+const STATUS_LABEL: Record<Status, string> = { open: 'Open', merged: 'Merged' };
+---
+{prs.length > 0 ? (
+  <ul class="oss-list">
+    {prs.map((pr) => (
+      <li class="oss-item">
+        <a class="oss-title" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.title}</a>
+        <span class="oss-meta">
+          <span class="oss-repo">{pr.repo}</span>
+          <span class:list={['oss-status', pr.status]}>{STATUS_LABEL[pr.status]}</span>
+          <span class="oss-date">{fmt(pr.date)}</span>
+        </span>
+      </li>
+    ))}
+  </ul>
+) : (
+  <p class="empty-note">No open pull requests right now.</p>
+)}
