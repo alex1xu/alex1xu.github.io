@@ -11,16 +11,25 @@ const posts = (await getCollection('blog'))
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
+
+const sections = [
+  { id: 'learning-log', label: 'Learning log' },
+  { id: 'posts', label: 'Posts' },
+];
 ---
 <Base title="Blog">
   <Hero page="blog" />
 
-  <section class="section">
+  <nav class="section-nav" aria-label="Page sections">
+    {sections.map((s) => <a href={`#${s.id}`}>{s.label}</a>)}
+  </nav>
+
+  <section id="learning-log" class="section">
     <p class="section-title">Learning log</p>
     <LearningLog />
   </section>
 
-  <section class="section">
+  <section id="posts" class="section">
     <p class="section-title">Posts</p>
     {posts.length > 0 ? (
       <ul class="post-list" id="post-list">
@@ -51,4 +60,33 @@ function formatDate(d: string) {
       }
     });
   } catch {}
+</script>
+
+<script>
+  // Scrollspy: highlight the section nav link for whichever section is in view.
+  // Progressive enhancement — without JS the links still work as anchor jumps.
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('.section-nav a'));
+  const targets = links
+    .map((a) => document.querySelector<HTMLElement>(a.getAttribute('href') || ''))
+    .filter((el): el is HTMLElement => el !== null);
+  function setActive(href: string) {
+    links.forEach((l) => {
+      const match = l.getAttribute('href') === href;
+      l.classList.toggle('active', match);
+      if (match) l.setAttribute('aria-current', 'true');
+      else l.removeAttribute('aria-current');
+    });
+  }
+  if (targets.length) {
+    setActive(links[0].getAttribute('href') || ''); // seed so the top of the page isn't unhighlighted
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActive(`#${e.target.id}`);
+        });
+      },
+      { rootMargin: '-30% 0px -60% 0px', threshold: 0 },
+    );
+    targets.forEach((t) => obs.observe(t));
+  }
 </script>

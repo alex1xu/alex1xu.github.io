@@ -31,6 +31,10 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
 body {
   min-height: 100vh;
   display: flex;
@@ -59,6 +63,38 @@ main {
   font-size: 0.8rem;
   color: var(--muted);
 }
+
+/* ── Section nav (sticky, blog) ── */
+
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  padding: 0.7rem 0;
+  margin-bottom: 2rem;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-nav a {
+  color: var(--muted);
+  padding-bottom: 2px;
+  border-bottom: 1.5px solid transparent;
+}
+.section-nav a:hover { color: var(--fg); text-decoration: none; }
+.section-nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* keep anchor jumps and scrollIntoView targets clear of the sticky nav */
+.section[id], .log { scroll-margin-top: 3.5rem; }
 
 /* ── Typography ── */
 
@@ -470,10 +506,15 @@ p { margin-bottom: 1rem; }
 
 .cal-cell.popped { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.log-more {
+.log-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.log-more, .log-less {
   font: inherit;
   font-size: 0.82rem;
-  margin-top: 1.25rem;
   padding: 0.4rem 1rem;
   background: var(--bg-soft);
   border: 1px solid var(--border);
@@ -481,7 +522,7 @@ p { margin-bottom: 1rem; }
   color: var(--fg);
   cursor: pointer;
 }
-.log-more:hover { border-color: var(--accent); color: var(--accent); }
+.log-more:hover, .log-less:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── Share button ── */
 
