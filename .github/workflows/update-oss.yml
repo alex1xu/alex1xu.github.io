@@ -39,5 +39,5 @@ jobs:
           git commit -m "chore: refresh OSS tracker data"
           git push
           # GITHUB_TOKEN-authored pushes don't trigger other workflows, so kick
-          # the Pages deploy explicitly.
-          gh workflow run "Deploy to GitHub Pages"
+          # the Pages deploy explicitly. Dispatch by filename (rename-resilient).
+          gh workflow run deploy.yml
