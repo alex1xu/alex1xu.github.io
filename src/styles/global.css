@@ -29,7 +29,10 @@ html {
   font-size: 16px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
-  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
 }
 
 body {
@@ -90,8 +93,8 @@ main {
 .section-nav a:hover { color: var(--fg); text-decoration: none; }
 .section-nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-/* keep anchor jumps clear of the sticky nav */
-.section[id] { scroll-margin-top: 3.5rem; }
+/* keep anchor jumps and scrollIntoView targets clear of the sticky nav */
+.section[id], .log { scroll-margin-top: 3.5rem; }
 
 /* ── Typography ── */
 

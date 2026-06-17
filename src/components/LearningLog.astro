@@ -234,7 +234,11 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
   viewBtns.forEach(b => b.addEventListener('click', () => { view = b.dataset.view!; renderView(); }));
   filterBtns.forEach(t => t.addEventListener('click', () => { filter = t.dataset.filter!; shown = initial; renderList(); }));
   moreBtn.addEventListener('click', () => { shown += step; renderList(); });
-  lessBtn.addEventListener('click', () => { shown = initial; renderList(); log.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  lessBtn.addEventListener('click', () => {
+    shown = initial; renderList();
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    log.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  });
   renderView();
   renderList();
 });

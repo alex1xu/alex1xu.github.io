@@ -69,13 +69,20 @@ const sections = [
   const targets = links
     .map((a) => document.querySelector<HTMLElement>(a.getAttribute('href') || ''))
     .filter((el): el is HTMLElement => el !== null);
+  function setActive(href: string) {
+    links.forEach((l) => {
+      const match = l.getAttribute('href') === href;
+      l.classList.toggle('active', match);
+      if (match) l.setAttribute('aria-current', 'true');
+      else l.removeAttribute('aria-current');
+    });
+  }
   if (targets.length) {
+    setActive(links[0].getAttribute('href') || ''); // seed so the top of the page isn't unhighlighted
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) {
-            links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === `#${e.target.id}`));
-          }
+          if (e.isIntersecting) setActive(`#${e.target.id}`);
         });
       },
       { rootMargin: '-30% 0px -60% 0px', threshold: 0 },
