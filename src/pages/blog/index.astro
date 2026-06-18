@@ -79,22 +79,29 @@ const sections = [
   }
   if (targets.length) {
     // Active section = the last one whose top has scrolled under the sticky nav.
-    // Matches scroll-margin-top (3.5rem) so a clicked anchor activates immediately,
-    // and short or last sections still resolve to exactly one link. A thin
+    // The line is the section's own scroll-margin-top (where a clicked anchor parks),
+    // so clicking a link activates it immediately; +1px absorbs sub-pixel rounding.
+    // Short or last sections still resolve to exactly one link — a thin
     // IntersectionObserver band missed sections too short to fill it.
-    const OFFSET = 64;
+    const OFFSET = (parseFloat(getComputedStyle(targets[0]).scrollMarginTop) || 56) + 1;
     function onScroll() {
       let idx = 0;
       targets.forEach((t, i) => {
         if (t.getBoundingClientRect().top <= OFFSET) idx = i;
       });
-      // Bottom of the page: the last section can't always scroll under the line.
-      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
+      // At the page bottom the last section's top may never reach the line.
+      // -1px guards against fractional scrollHeight/innerHeight on zoom/HiDPI.
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) {
         idx = targets.length - 1;
       }
       setActive(links[idx].getAttribute('href') || '');
     }
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    // Re-seed once layout settles: a deep-link load (/blog/#posts) and late web
+    // fonts shift section tops after this script first runs.
+    window.addEventListener('load', onScroll);
+    document.fonts?.ready.then(onScroll);
   }
 </script>
