@@ -1,0 +1,21 @@
+{
+  "generated": "2026-06-17",
+  "prs": [
+    {
+      "repo": "llvm/torch-mlir",
+      "number": 4612,
+      "title": "[Torch] Fix verifier crashes on malformed global slot initializer IR",
+      "url": "https://github.com/llvm/torch-mlir/pull/4612",
+      "status": "open",
+      "date": "2026-06-17"
+    },
+    {
+      "repo": "pytorch/pytorch",
+      "number": 187396,
+      "title": "Fix integer linspace decomposition to match eager",
+      "url": "https://github.com/pytorch/pytorch/pull/187396",
+      "status": "open",
+      "date": "2026-06-15"
+    }
+  ]
+}
