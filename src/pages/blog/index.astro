@@ -78,15 +78,23 @@ const sections = [
     });
   }
   if (targets.length) {
-    setActive(links[0].getAttribute('href') || ''); // seed so the top of the page isn't unhighlighted
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) setActive(`#${e.target.id}`);
-        });
-      },
-      { rootMargin: '-30% 0px -60% 0px', threshold: 0 },
-    );
-    targets.forEach((t) => obs.observe(t));
+    // Active section = the last one whose top has scrolled under the sticky nav.
+    // Matches scroll-margin-top (3.5rem) so a clicked anchor activates immediately,
+    // and short or last sections still resolve to exactly one link. A thin
+    // IntersectionObserver band missed sections too short to fill it.
+    const OFFSET = 64;
+    function onScroll() {
+      let idx = 0;
+      targets.forEach((t, i) => {
+        if (t.getBoundingClientRect().top <= OFFSET) idx = i;
+      });
+      // Bottom of the page: the last section can't always scroll under the line.
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
+        idx = targets.length - 1;
+      }
+      setActive(links[idx].getAttribute('href') || '');
+    }
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
   }
 </script>
