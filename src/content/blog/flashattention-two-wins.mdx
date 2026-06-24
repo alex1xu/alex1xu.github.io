@@ -12,6 +12,8 @@ I spent the last couple of weeks writing FlashAttention from scratch — startin
 
 Short version: that one sentence is hiding two completely separate problems. Tiling the attention so it never materializes the score matrix fixes memory — and it made my kernel **11× slower**. Getting it actually fast is a different fight entirely, one that has almost nothing to do with the online-softmax trick everyone teaches. This post is the first half: the memory wall, the algorithm, and getting a correct forward kernel. The "why is it still slow" autopsy is the next post.
 
+For context: this is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems after work. The last two weeks were GPU and CUDA fundamentals and then attention internals — mostly out of [GPU MODE](https://www.youtube.com/@GPUMODE) lectures, Stanford's [CS336](https://stanford-cs336.github.io/), the PMPP book, Horace He's [Making Deep Learning Go Brrrr](https://horace.io/brrr_intro.html), and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)) plus Tri Dao's blog. It's one thing to read how a GPU works and another to make one go fast, and the only way I trust myself to tell the difference is to build the thing and measure it.
+
 Everything here ran on a single **A100-SXM4-80GB** (108 SMs, 2.0 TB/s HBM, 312 FP16 tensor-core TFLOP/s) on Lightning AI. Every TFLOP/s number below is the attention FLOPs at `B=8, H=16, d=128`, fp16, non-causal, timed with CUDA events; "SDPA" is PyTorch's flash backend on the same shapes.
 
 ## The memory wall, measured
@@ -30,7 +32,7 @@ def naive_attention(q, k, v):
 ```
 </CodeCard>
 
-That `[B, H, N, N]` scores tensor is the whole story. At `B=8, H=16, N=8192` in fp16 it's `8·16·8192·8192·2` bytes = **16 GB** for one intermediate — and softmax reads the scores to write the probabilities, so both are resident at once and you're holding it twice. I swept sequence length and watched it climb:
+That `[B, H, N, N]` scores tensor is the whole story. At `B=8, H=16, N=8192` in fp16 it's `8·16·8192·8192·2` bytes = **17 GB** for one intermediate — and softmax reads the scores to write the probabilities, so both are resident at once and you're holding it twice. I swept sequence length and watched it climb:
 
 | N | naive peak memory |
 |---|---|
@@ -39,7 +41,7 @@ That `[B, H, N, N]` scores tensor is the whole story. At `B=8, H=16, N=8192` in 
 | 12288 | 78.9 GB |
 | 16384 | **OOM** |
 
-Even on an 80 GB A100, naive attention falls over at `N=16384` — the scores are ~64 GB on their own, and ~128 GB once softmax holds the second copy. The memory grows as O(N²) and there's no batch size small enough to save you, because the problem is one sequence, not the batch.
+Even on an 80 GB A100, naive attention falls over at `N=16384` — the scores are ~69 GB on their own, and ~137 GB once softmax holds the second copy. The memory grows as O(N²) and there's no batch size small enough to save you, because the problem is one sequence, not the batch.
 
 FlashAttention's claim is that you never materialize that tensor at all. You tile it, keep a running softmax, and the memory drops from O(N²) to O(N). I'll come back to whether that's also what makes it *fast* — it isn't, and that surprised me.
 
@@ -103,15 +105,15 @@ for (int j = 0; j < N; j += BLOCK_N) {
 ```
 </CodeCard>
 
-It works. Max abs error vs PyTorch's `scaled_dot_product_attention` is ~1e-3 in fp16, and — the part I actually cared about — it ran `N=16384` at **2.15 GB**, exactly where the naive version OOM'd asking for ~128 GB. O(N) memory, made concrete. That's the whole FlashAttention promise, in one short kernel.
+It works. Max abs error vs PyTorch's `scaled_dot_product_attention` is ~1e-3 in fp16, and — the part I actually cared about — it ran `N=16384` at **2.15 GB**, exactly where the naive version OOM'd asking for ~137 GB. O(N) memory, made concrete. That's the whole FlashAttention promise, in one short kernel.
 
-And it runs at **~5 TFLOP/s. The naive baseline does 54.** Tiling for memory made the kernel **11× slower**.
+And it runs at **~5 TFLOP/s. The naive baseline does 54** — slow on memory, but its two big matmuls go straight to cuBLAS's tensor-core kernels, which my scalar loop can't touch. Tiling for memory made the kernel **11× slower**.
 
 <Callout type="lesson" title="The thing nobody says out loud">
 "FlashAttention is fast" is two claims wearing one coat. *It fits* (O(N) memory, the online-softmax algorithm) and *it's fast* (tensor cores, occupancy, hidden memory latency) are completely separate axes. My tiled kernel nailed the first and was a disaster on the second. Most write-ups collapse both into one sentence and you never find out they're different until you build it.
 </Callout>
 
-The reason is no mystery: scalar fused-multiply-adds on the CUDA cores can't compete with the naive version's calls into cuBLAS, which is hammering the tensor cores for the big matmuls. So the next kernel does the obvious thing — hand the matmuls to the tensor cores.
+So the next kernel does the obvious thing — hand those matmuls to the tensor cores myself.
 
 ### The bug that taught me what "in shared memory" means
 
@@ -160,11 +162,19 @@ for (int j = 0; j < N; j += 16) {
     }
     __syncwarp();
 
-    // ---- PV = P @ V  (WMMA), then  O = alpha*O + PV  (deferred-norm FA2 choice) ----
-    // … WMMA P@V into PVs, then rescale-add into the running Os …
+    // ---- PV = P @ V  (WMMA over the 8 head-dim sub-tiles) ----
+    wmma::fragment<wmma::matrix_a,16,16,16,half,wmma::row_major> pa;
+    wmma::load_matrix_sync(pa, Ps, 16);           // the probabilities we just wrote
+    for (int nt = 0; nt < NK; ++nt) {
+        wmma::fragment<wmma::matrix_b,16,16,16,half,wmma::row_major> vb;
+        wmma::load_matrix_sync(vb, Vb + nt*16, HD);
+        wmma::mma_sync(pv, pa, vb, /*zero acc*/);  // -> PVs[nt block]
+    }
+    // ---- O = alpha*O + PV : rescale the running output, then add this block ----
+    for (int t = lane; t < BM*HD; t += 32) Os[t] = Al[t/HD]*Os[t] + PVs[t];
     __syncwarp();
 }
-// normalize once at the very end: O / l
+// normalize once at the very end: O[r] = Os[r] / Ls[r]
 ```
 </CodeCard>
 
@@ -185,7 +195,7 @@ For most of a day my WMMA kernel produced wrong output across about ten differen
 There was no compute bug. The kernel had never launched, not once.
 
 <Callout type="lesson" title="Always check the launch before you trust the output">
-The launch was failing silently with `cudaErrorInsufficientDriver`: the system `nvcc` was CUDA 13.0, which the host's driver (570) can't run, while torch quietly works because it bundles its own 12.8 runtime. Every "result" I'd been debugging was just the output tensor's *initial* value — uninitialized garbage, or zeros from `empty_like`. **The allocation-dependent NaN was the tell:** it was memory the kernel never touched. One check after the launch surfaces it instantly, and it's the first thing in every kernel harness I write now.
+The launch was failing silently with `cudaErrorInsufficientDriver`: the system `nvcc` was CUDA 13.0, which the host's driver (570) can't run, while torch quietly works because it bundles its own 12.8 runtime. Every "result" I'd been debugging was just the output tensor's *initial* value — uninitialized memory, whatever happened to be in that allocation pool (sometimes garbage, sometimes zeros). **The allocation-dependent NaN was the tell:** it was memory the kernel never touched. One check after the launch surfaces it instantly, and it's the first thing in every kernel harness I write now.
 </Callout>
 
 ```diff
@@ -200,7 +210,7 @@ The launch was failing silently with `cudaErrorInsufficientDriver`: the system `
 
 Earlier, a different impossibility: my memory sweep cheerfully reported a 78.9 GB allocation as "OK" on what my environment check insisted was a 40 GB card. My first instinct was memory oversubscription — host paging making an over-large allocation look like it fit.
 
-It wasn't. The Lightning instance had silently swapped from a 40 GB A100 to an 80 GB one between sessions. The tell was timing: `N=12288` took 1.07s versus `N=8192` at 0.30s — about 3.5×, right in line with the FLOP ratio, nowhere near the 5–20× slowdown host paging would cause. `torch.cuda` confirmed 85 GB of total memory. The hardware identity I'd written my constants against was just… different.
+It wasn't. The Lightning instance had silently swapped from a 40 GB A100 to an 80 GB one between sessions. The tell was timing: `N=12288` took 1.07s versus `N=8192` at 0.30s — about 3.5×, in line with the 2.25× FLOP ratio plus a memory-bound penalty, and nowhere near the 5–20× slowdown host paging would cause. `torch.cuda` confirmed 85 GB of total memory. The hardware identity I'd written my constants against was just… different.
 
 <Callout type="lesson">
 On ephemeral cloud GPUs, re-verify the machine every session, not just the code. The roofline, the memory ceiling, the crossover sequence length — every number I care about is pinned to *which card this is*, and that turned out not to be stable. Re-stamp the constants before trusting a single benchmark.
@@ -215,7 +225,8 @@ The forward pass is correct, in three versions that each fix one more thing, and
 | naive | 54 | the O(N²) memory wall (OOMs at N=16384) |
 | tiled, no tensor cores | 5 | tiling fixes memory (2.15 GB @ N=16384) — and nothing else |
 | WMMA, FA2 schedule (best) | 21 | tensor cores are necessary, ~10% of SDPA, not nearly enough |
+| PyTorch SDPA (flash backend) | ~200 | the target — 65% of the card's peak |
 
-The algorithm that *is* FlashAttention — the online softmax, the tiling, the O(N) memory — was the easy 10%, and once it was correct it was nearly free. Everything between 21 TFLOP/s and PyTorch's 200 is a different problem, made of occupancy and memory latency and how the tensor cores are actually fed.
+The algorithm that *is* FlashAttention — the online softmax, the tiling, the O(N) memory — was the easy 10%, and once it was correct it was nearly free. Everything between my 21 TFLOP/s and SDPA's ~200 is a different problem, made of occupancy and memory latency and how the tensor cores are actually fed.
 
 That's the next post: three hypotheses about the gap, all wrong, and what a profiler I wasn't allowed to run finally told me anyway.
