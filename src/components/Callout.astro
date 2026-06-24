@@ -1,0 +1,46 @@
+---
+// A small aside for lessons learned and honest caveats.
+// Usage: <Callout type="lesson" title="Lesson">…body…</Callout>
+interface Props {
+  type?: 'note' | 'lesson' | 'warning';
+  title?: string;
+}
+const { type = 'note', title } = Astro.props;
+const defaultTitle = { note: 'Note', lesson: 'Lesson', warning: 'Heads-up' }[type];
+const label = title ?? defaultTitle;
+---
+<aside class={`callout callout-${type}`}>
+  <div class="callout-label">{label}</div>
+  <div class="callout-body"><slot /></div>
+</aside>
+
+<style>
+  .callout {
+    margin: 1.75rem 0;
+    padding: 0.9rem 1.1rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    background: var(--bg-soft);
+    font-size: 0.94rem;
+  }
+  .callout-label {
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+  .callout-body :global(p:last-child) { margin-bottom: 0; }
+  .callout-body :global(p:first-child) { margin-top: 0; }
+
+  .callout-lesson { border-left-color: var(--accent); background: #f7ece2; }
+  .callout-lesson .callout-label { color: var(--accent); }
+
+  .callout-warning { border-left-color: #b5562f; background: #f7e7dd; }
+  .callout-warning .callout-label { color: #b5562f; }
+
+  .callout-note { border-left-color: var(--accent-soft); }
+</style>

@@ -1,0 +1,89 @@
+---
+// A labeled code block: filename header, optional source link, optional collapse.
+// Wrap a fenced code block in MDX:
+//   <CodeCard file="flash_wmma.py" lines="40–94" href="https://github.com/…">
+//   ```cuda
+//   …code…
+//   ```
+//   </CodeCard>
+// Set collapsible to hide the body behind a click (good for long kernels):
+//   <CodeCard file="flash_min.py" collapsible summary="The full 88-line kernel">…</CodeCard>
+interface Props {
+  file?: string;
+  lines?: string;
+  href?: string;
+  collapsible?: boolean;
+  summary?: string;
+  open?: boolean;
+}
+const { file, lines, href, collapsible = false, summary, open = false } = Astro.props;
+const headLabel = collapsible ? (summary ?? file ?? 'Show code') : file;
+---
+{collapsible ? (
+  <details class="codecard" open={open}>
+    <summary class="codecard-head">
+      <span class="codecard-file">
+        <span class="codecard-caret">▸</span>
+        {headLabel}
+        {lines && <span class="codecard-lines">{lines}</span>}
+      </span>
+      {href && <a class="codecard-src" href={href} target="_blank" rel="noopener">source ↗</a>}
+    </summary>
+    <div class="codecard-body"><slot /></div>
+  </details>
+) : (
+  <div class="codecard">
+    <div class="codecard-head">
+      <span class="codecard-file">
+        {headLabel}
+        {lines && <span class="codecard-lines">{lines}</span>}
+      </span>
+      {href && <a class="codecard-src" href={href} target="_blank" rel="noopener">source ↗</a>}
+    </div>
+    <div class="codecard-body"><slot /></div>
+  </div>
+)}
+
+<style>
+  .codecard {
+    margin: 1.5rem 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .codecard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.85rem;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+  }
+  summary.codecard-head { cursor: pointer; list-style: none; }
+  summary.codecard-head::-webkit-details-marker { display: none; }
+  .codecard-file { color: var(--fg); font-weight: 500; }
+  .codecard-lines { color: var(--muted); margin-left: 0.5rem; font-weight: 400; }
+  .codecard-src {
+    font-size: 0.74rem;
+    color: var(--accent);
+    white-space: nowrap;
+    font-family: var(--font-sans);
+  }
+  .codecard-caret {
+    display: inline-block;
+    margin-right: 0.4rem;
+    transition: transform 0.12s ease;
+    color: var(--muted);
+  }
+  details[open] .codecard-caret { transform: rotate(90deg); }
+
+  /* the slotted <pre> sits flush inside the card */
+  .codecard-body :global(pre) {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+</style>
