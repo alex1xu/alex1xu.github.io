@@ -1,0 +1,47 @@
+---
+// Forward-pass throughput ladder (A100-80GB, B8 H16 d128 fp16). Horizontal bars vs peak.
+const peak = 312;
+const data = [
+  { label: 'naive', value: 54, kind: 'baseline' },
+  { label: 'tiled, no tensor cores', value: 5, kind: 'mine' },
+  { label: 'WMMA (FA2, best)', value: 21, kind: 'mine' },
+  { label: 'PyTorch SDPA', value: 200, kind: 'target' },
+];
+const W = 640, rowH = 40, top = 18, labelW = 176, barMax = 372;
+const H = top + data.length * rowH + 26;
+const x = (v) => (v / peak) * barMax;
+const fill = { baseline: 'var(--muted)', mine: 'var(--accent)', target: 'var(--done)' };
+const peakX = labelW + barMax;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Forward-pass throughput in TFLOP/s on A100-80GB: naive 54, tiled 5, WMMA 21, PyTorch SDPA 200, against a peak of 312.">
+    <line x1={peakX} y1={top - 8} x2={peakX} y2={top + data.length * rowH} stroke="var(--border)" stroke-dasharray="3 3" />
+    <text x={peakX} y={top + data.length * rowH + 16} text-anchor="middle" class="ax">peak 312</text>
+    {data.map((d, i) => {
+      const y = top + i * rowH;
+      const bw = Math.max(x(d.value), 2);
+      return (
+        <g>
+          <text x={labelW - 12} y={y + (rowH - 14) / 2 + 7} text-anchor="end" class="lbl">{d.label}</text>
+          <rect x={labelW} y={y} width={bw} height={rowH - 14} rx="2" fill={fill[d.kind]} />
+          <text x={labelW + bw + 8} y={y + (rowH - 14) / 2 + 5} class="val">{d.value} TF</text>
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>Forward throughput on an A100-80GB (B=8, H=16, d=128, fp16). The tiled kernel that fixed the memory problem is the <em>slowest</em> of all — fitting and going fast are two different wins.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.val) { font-size: 13px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.ax)  { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+</style>

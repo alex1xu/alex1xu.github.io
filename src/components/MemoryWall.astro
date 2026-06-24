@@ -1,0 +1,63 @@
+---
+// Peak memory vs sequence length: naive O(N^2) (explodes past the 80 GB ceiling) vs FlashAttention O(N).
+const Ns = [4096, 8192, 12288, 16384];
+const naive = [9.1, 35.4, 78.9, null];   // null = OOM at N=16384 (would need ~137 GB)
+const flash = [0.54, 1.07, 1.61, 2.15];
+const ceiling = 80, yMax = 95;
+const W = 640, H = 300, padL = 46, padR = 14, padT = 18, padB = 46;
+const plotW = W - padL - padR, plotH = H - padT - padB;
+const xi = (i) => padL + (i / (Ns.length - 1)) * plotW;
+const y = (v) => padT + (1 - v / yMax) * plotH;
+const naivePts = naive.map((v, i) => (v == null ? null : `${xi(i)},${y(v)}`)).filter(Boolean).join(' ');
+const flashPts = flash.map((v, i) => `${xi(i)},${y(v)}`).join(' ');
+const gridVals = [0, 40, 80];
+const oomX = xi(3), oomY = y(91);
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Peak memory versus sequence length. Naive attention grows quadratically and OOMs at N=16384 needing ~137 GB; FlashAttention grows linearly and stays near 2 GB.">
+    {gridVals.map((g) => (
+      <g>
+        <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="var(--border)" stroke-width="1" />
+        <text x={padL - 8} y={y(g) + 4} text-anchor="end" class="ax">{g}</text>
+      </g>
+    ))}
+    <text x={14} y={padT + 4} class="ax">GB</text>
+
+    <line x1={padL} y1={y(ceiling)} x2={W - padR} y2={y(ceiling)} stroke="var(--accent)" stroke-dasharray="4 3" stroke-width="1.5" />
+    <text x={padL + 4} y={y(ceiling) - 6} text-anchor="start" class="ax accent">A100 — 80 GB</text>
+
+    {Ns.map((n, i) => (
+      <text x={xi(i)} y={H - padB + 18} text-anchor="middle" class="ax">{n === 16384 ? '16384' : n}</text>
+    ))}
+    <text x={(padL + W - padR) / 2} y={H - 6} text-anchor="middle" class="ax">sequence length N</text>
+
+    <polyline points={flashPts} fill="none" stroke="var(--done)" stroke-width="2.5" />
+    {flash.map((v, i) => <circle cx={xi(i)} cy={y(v)} r="3.5" fill="var(--done)" />)}
+    <text x={xi(0) + 6} y={y(flash[0]) - 8} class="series done">FlashAttention — O(N)</text>
+
+    <polyline points={naivePts} fill="none" stroke="var(--fg)" stroke-width="2.5" />
+    {naive.map((v, i) => (v == null ? null : <circle cx={xi(i)} cy={y(v)} r="3.5" fill="var(--fg)" />))}
+    {naive.map((v, i) => (v == null ? null : <text x={xi(i) + 7} y={y(v) + 4} class="pt">{v} GB</text>))}
+    <line x1={xi(2)} y1={y(naive[2])} x2={oomX} y2={oomY} stroke="var(--fg)" stroke-width="2" stroke-dasharray="4 3" />
+    <text x={oomX - 6} y={oomY + 1} text-anchor="end" class="series oom">✕ OOM (~137 GB)</text>
+    <text x={xi(1) - 4} y={y(naive[1]) - 10} text-anchor="end" class="series">naive — O(N²)</text>
+  </svg>
+  <figcaption>Peak memory by sequence length. The naive scores tensor grows as O(N²) and blows past the 80 GB ceiling by N=16384; tiling keeps the footprint O(N), flat near 2 GB.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.ax.accent) { fill: var(--accent); }
+  .chart :global(.series) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.series.done) { fill: var(--done); }
+  .chart :global(.series.oom) { fill: var(--accent); font-family: var(--font-mono); font-size: 11px; }
+  .chart :global(.pt) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-mono); }
+</style>
