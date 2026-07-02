@@ -1,11 +1,12 @@
 ---
-// The two-front load-test failure. Target ~1000 RPS, but two independent ceilings capped it:
-// the client self-throttled to 10–20% of target, and the server saturated at ~150–286 accepted RPS.
-// Bars vs the 1000 RPS target line. Numbers are real (Tier A).
-const target = 1000;
+// The two-front load-test failure. Target 1500 aggregate RPS (150 users × ~10/s), but two
+// ENTANGLED ceilings capped it near the same magnitude: the client self-throttled to 10–20%
+// of target (~150–300 offered) and the server saturated at ~150–286 accepted RPS — too close
+// to cleanly separate. Bars vs the 1500 RPS target line. Numbers are real (Tier A).
+const target = 1500;
 const data = [
-  { label: 'target', value: 1000, kind: 'target', note: 'intended load' },
-  { label: 'client-throttle ceiling', value: 175, kind: 'mine', note: 'self-throttled to 10–20% of target' },
+  { label: 'target', value: 1500, kind: 'target', note: '150 users × ~10/s' },
+  { label: 'client-throttle ceiling', value: 225, kind: 'mine', note: '10–20% of target · ~150–300 offered' },
   { label: 'server saturation ceiling', value: 286, kind: 'mine', note: '~150–286 accepted RPS' },
 ];
 const W = 640, rowH = 46, top = 18, labelW = 186, barMax = 340;
@@ -15,9 +16,9 @@ const fill = { target: 'var(--done)', mine: 'var(--accent)' };
 const tgtX = labelW + barMax;
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Two-front load-test failure against a 1000 RPS target. The client self-throttled to 10–20% of target (roughly 175 RPS), and independently the server saturated at 150–286 accepted RPS, with p99 latency of 28 to 78 seconds and up to 17,002 orders backlogged.">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Two-front load-test failure against a 1500 aggregate RPS target. The client self-throttled to 10–20% of target (roughly 150–300 RPS offered), and the server saturated at 150–286 accepted RPS — nearly the same magnitude, too close to separate cleanly — with p99 latency of 28 to 78 seconds and up to 17,002 orders backlogged.">
     <line x1={tgtX} y1={top - 8} x2={tgtX} y2={top + data.length * rowH} stroke="var(--border)" stroke-dasharray="3 3" />
-    <text x={tgtX} y={top + data.length * rowH + 16} text-anchor="middle" class="ax">target 1000</text>
+    <text x={tgtX} y={top + data.length * rowH + 16} text-anchor="middle" class="ax">target 1500</text>
 
     {data.map((d, i) => {
       const y = top + i * rowH;
@@ -39,7 +40,7 @@ const tgtX = labelW + barMax;
 
     <text x={labelW} y={top + data.length * rowH + 34} text-anchor="start" class="callout">p99 28–78 s · up to 17,002 orders backlogged</text>
   </svg>
-  <figcaption>Two independent ceilings, not one: the client never sent more than 10–20% of the intended load, while the server saturated at 150–286 accepted RPS with p99 latency blowing out to 28–78 s and a backlog reaching 17,002 orders. Fixing one wouldn't have revealed the other.</figcaption>
+  <figcaption>Two entangled ceilings at nearly the same rate, not two clean walls: the client never sent more than 10–20% of the intended load (~150–300 RPS offered), and the server saturated at 150–286 accepted RPS with p99 latency blowing out to 28–78 s and a backlog reaching 17,002 orders. Close enough that I couldn't cleanly separate which capped first.</figcaption>
 </figure>
 
 <style>
