@@ -3,8 +3,44 @@
 // progress bar and a table of contents built from the post's H2 headings.
 // All markup is inert without JS (bar stays 0-width, TOC stays hidden), so
 // the prose is fully readable with scripting disabled.
+//
+// The TOC groups H2 sections under chapters when the post's heading slugs
+// match a chapter map below; otherwise it renders a flat list. The map is
+// post-specific (keyed by slug), so a post whose slugs don't match any
+// chapter (e.g. a different post) falls back to the flat TOC automatically.
+//
+// KEEP IN SYNC: if you rename/reorder/add an H2 in a mapped post, update the
+// matching slug here. A discovered H2 whose slug isn't in any chapter is not
+// dropped — it's appended to a trailing "More" chapter so the TOC stays
+// complete even when the map drifts.
+const chapterMaps: { chapter: string; sectionSlugs: string[] }[][] = [
+  // mario-markets.mdx
+  [
+    { chapter: 'The game', sectionSlugs: ['the-game-and-why-it-needed-a-real-exchange'] },
+    {
+      chapter: 'Version one, and where it broke',
+      sectionSlugs: [
+        'version-one-python-redis-and-a-board-game-underneath',
+        'the-first-real-win-a-tree-then-an-array',
+        'the-wall-two-ways-a-load-test-can-lie',
+        'the-case-for-a-rewrite-it-was-never-just-speed',
+      ],
+    },
+    {
+      chapter: 'The rewrite',
+      sectionSlugs: [
+        'version-two-one-thread-no-locks-one-source-of-truth',
+        'proving-it-didnt-break-a-second-engine-on-purpose',
+      ],
+    },
+    { chapter: 'How fast it really is', sectionSlugs: ['how-fast-and-what-actually-binds-it'] },
+    { chapter: 'Wrapping up', sectionSlugs: ['competition-day-and-what-id-measure-next'] },
+  ],
+];
 ---
 <div class="reading-progress" aria-hidden="true"></div>
+
+<script type="application/json" id="toc-chapter-maps" set:html={JSON.stringify(chapterMaps)} />
 
 <details class="toc toc-inline">
   <summary>Contents</summary>
@@ -17,20 +53,74 @@
 </aside>
 
 <script>
+  type Chapter = { chapter: string; sectionSlugs: string[] };
+
   const article = document.querySelector('article.prose');
   if (article) {
     const heads = Array.from(article.querySelectorAll('h2')).filter((h) => h.id);
 
     if (heads.length >= 3) {
-      const items = heads
-        .map((h) => {
-          const a = document.createElement('a');
-          a.href = `#${h.id}`;
-          a.textContent = h.textContent ?? '';
-          return a.outerHTML;
-        })
-        .join('');
-      document.querySelectorAll('.toc-nav').forEach((nav) => { nav.innerHTML = items; });
+      const escapeHtml = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const anchor = (h: Element) =>
+        `<a href="#${h.id}">${escapeHtml(h.textContent ?? '')}</a>`;
+
+      // Load the chapter maps emitted by the frontmatter and pick the one that
+      // covers the most of this post's H2 slugs. Zero coverage → flat TOC.
+      let maps: Chapter[][] = [];
+      try {
+        maps = JSON.parse(document.getElementById('toc-chapter-maps')?.textContent ?? '[]');
+      } catch { maps = []; }
+
+      const headIds = new Set(heads.map((h) => h.id));
+      const coverage = (m: Chapter[]) =>
+        m.reduce((n, c) => n + c.sectionSlugs.filter((s) => headIds.has(s)).length, 0);
+      let best: Chapter[] | null = null;
+      let bestCov = 0;
+      for (const m of maps) {
+        const cov = coverage(m);
+        if (cov > bestCov) { bestCov = cov; best = m; }
+      }
+
+      // slug → chapter title, used by both rendering and scrollspy.
+      const slugChapter = new Map<string, string>();
+      let html = '';
+
+      if (best && bestCov > 0) {
+        // Bucket discovered heads under their chapter, preserving DOM order
+        // within each chapter. Heads absent from the map fall into "More".
+        const slugToChapterName = new Map<string, string>();
+        for (const c of best) for (const s of c.sectionSlugs) slugToChapterName.set(s, c.chapter);
+
+        const MORE = 'More';
+        const buckets = new Map<string, Element[]>();
+        const order: string[] = [];
+        const push = (name: string, h: Element) => {
+          if (!buckets.has(name)) { buckets.set(name, []); order.push(name); }
+          buckets.get(name)!.push(h);
+          slugChapter.set(h.id, name);
+        };
+        // Seed order from the map so empty chapters are skipped but present
+        // ones keep the authored sequence.
+        for (const c of best) if (c.sectionSlugs.some((s) => headIds.has(s))) {
+          if (!buckets.has(c.chapter)) { buckets.set(c.chapter, []); order.push(c.chapter); }
+        }
+        for (const h of heads) push(slugToChapterName.get(h.id) ?? MORE, h);
+
+        html = order
+          .map((name) => {
+            const links = (buckets.get(name) ?? []).map(anchor).join('');
+            return `<div class="toc-chapter"><p class="toc-chapter-label" data-chapter="${escapeHtml(
+              name,
+            )}">${escapeHtml(name)}</p><div class="toc-sections">${links}</div></div>`;
+          })
+          .join('');
+      } else {
+        // Flat TOC: no matching chapter map (e.g. a different post).
+        html = heads.map(anchor).join('');
+      }
+
+      document.querySelectorAll('.toc-nav').forEach((nav) => { nav.innerHTML = html; });
       document.querySelectorAll('.toc').forEach((t) => t.classList.add('is-visible'));
 
       // Collapse the inline disclosure after following a link on mobile.
@@ -39,9 +129,14 @@
         if ((e.target as HTMLElement).tagName === 'A') inline.removeAttribute('open');
       });
 
-      // Scrollspy: highlight the topmost heading near the top of the viewport.
+      // Scrollspy: highlight the topmost heading near the top of the viewport,
+      // and mark its parent chapter (if any) as current too.
       const linksFor = (id: string) =>
         document.querySelectorAll(`.toc-nav a[href="#${CSS.escape(id)}"]`);
+      const chapterLabelsFor = (name: string) =>
+        document.querySelectorAll(
+          `.toc-nav .toc-chapter-label[data-chapter="${CSS.escape(name)}"]`,
+        );
       const visible = new Set<string>();
       const io = new IntersectionObserver(
         (entries) => {
@@ -56,6 +151,11 @@
           if (activeId) {
             document.querySelectorAll('.toc-nav a.active').forEach((a) => a.classList.remove('active'));
             linksFor(activeId).forEach((a) => a.classList.add('active'));
+            document
+              .querySelectorAll('.toc-chapter-label.is-current')
+              .forEach((p) => p.classList.remove('is-current'));
+            const chap = slugChapter.get(activeId);
+            if (chap) chapterLabelsFor(chap).forEach((p) => p.classList.add('is-current'));
           }
         },
         { rootMargin: '-10% 0px -70% 0px', threshold: 0 },

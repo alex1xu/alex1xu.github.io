@@ -626,6 +626,23 @@ p { margin-bottom: 1rem; }
 .toc-nav a:hover { color: var(--fg); text-decoration: none; }
 .toc-nav a.active { color: var(--accent); border-left-color: var(--accent); }
 
+/* Two-level TOC: chapter label over its indented section links. */
+.toc-chapter + .toc-chapter { margin-top: 0.9rem; }
+.toc-chapter-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  margin-bottom: 0.35rem;
+  padding-left: 0.6rem;
+}
+.toc-chapter-label.is-current { color: var(--accent); }
+.toc-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .toc-label {
   font-size: 0.72rem;
   font-weight: 600;
