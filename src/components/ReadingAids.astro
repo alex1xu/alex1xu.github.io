@@ -1,0 +1,86 @@
+---
+// Progressive-enhancement reading aids for a blog post: a sticky top
+// progress bar and a table of contents built from the post's H2 headings.
+// All markup is inert without JS (bar stays 0-width, TOC stays hidden), so
+// the prose is fully readable with scripting disabled.
+---
+<div class="reading-progress" aria-hidden="true"></div>
+
+<details class="toc toc-inline">
+  <summary>Contents</summary>
+  <nav class="toc-nav" aria-label="Table of contents"></nav>
+</details>
+
+<aside class="toc toc-side">
+  <p class="toc-label">Contents</p>
+  <nav class="toc-nav" aria-label="Table of contents"></nav>
+</aside>
+
+<script>
+  const article = document.querySelector('article.prose');
+  if (article) {
+    const heads = Array.from(article.querySelectorAll('h2')).filter((h) => h.id);
+
+    if (heads.length >= 3) {
+      const items = heads
+        .map((h) => {
+          const a = document.createElement('a');
+          a.href = `#${h.id}`;
+          a.textContent = h.textContent ?? '';
+          return a.outerHTML;
+        })
+        .join('');
+      document.querySelectorAll('.toc-nav').forEach((nav) => { nav.innerHTML = items; });
+      document.querySelectorAll('.toc').forEach((t) => t.classList.add('is-visible'));
+
+      // Collapse the inline disclosure after following a link on mobile.
+      const inline = document.querySelector('.toc-inline');
+      inline?.querySelector('.toc-nav')?.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).tagName === 'A') inline.removeAttribute('open');
+      });
+
+      // Scrollspy: highlight the topmost heading near the top of the viewport.
+      const linksFor = (id: string) =>
+        document.querySelectorAll(`.toc-nav a[href="#${CSS.escape(id)}"]`);
+      const visible = new Set<string>();
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) visible.add(e.target.id);
+            else visible.delete(e.target.id);
+          }
+          let activeId: string | null = null;
+          for (const h of heads) {
+            if (visible.has(h.id)) { activeId = h.id; break; }
+          }
+          if (activeId) {
+            document.querySelectorAll('.toc-nav a.active').forEach((a) => a.classList.remove('active'));
+            linksFor(activeId).forEach((a) => a.classList.add('active'));
+          }
+        },
+        { rootMargin: '-10% 0px -70% 0px', threshold: 0 },
+      );
+      heads.forEach((h) => io.observe(h));
+    }
+
+    // Sticky reading-progress bar.
+    const bar = document.querySelector('.reading-progress') as HTMLElement | null;
+    if (bar) {
+      let ticking = false;
+      const update = () => {
+        const rect = article.getBoundingClientRect();
+        const total = rect.height - window.innerHeight;
+        const scrolled = -rect.top;
+        const pct = total > 0 ? Math.min(1, Math.max(0, scrolled / total)) : 0;
+        bar.style.width = `${pct * 100}%`;
+        ticking = false;
+      };
+      const onScroll = () => {
+        if (!ticking) { ticking = true; requestAnimationFrame(update); }
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll, { passive: true });
+      update();
+    }
+  }
+</script>

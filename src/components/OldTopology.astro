@@ -45,6 +45,8 @@ const redisC = bx(2) + bw / 2;
       </g>
     ))}
 
+    {/* mask the fanout curve behind the Redis descriptor labels so no text sits on a stroke */}
+    <rect x={redisC - 146} y={top + bh + 4} width={292} height={34} fill="var(--bg)" />
     <text x={redisC} y={top + bh + 20} text-anchor="middle" class="note">Streams = command bus · Pub/Sub = fanout</text>
     <text x={redisC} y={top + bh + 34} text-anchor="middle" class="note dim">single point of fragility</text>
   </svg>

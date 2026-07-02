@@ -1,0 +1,98 @@
+---
+// The one structural contrast between the two versions, side by side.
+// v1 (muted): many moving parts over a shared Redis bus — FastAPI, an asyncio engine,
+// and Postgres all coordinating through Redis, which is both command bus and fanout.
+// v2 (accent): one process, one writer thread, lock-free rings, journal WAL.
+// The point is shape, not a feature list: many-parts-over-a-bus vs one-writer-one-process.
+const W = 640, H = 320;
+const colW = 300, gap = 20;
+const leftX = 8, rightX = leftX + colW + gap;
+const panelY = 44, panelH = H - panelY - 12;
+// v1 parts (over the bus)
+const v1 = [
+  { t: 'FastAPI', s: 'backend' },
+  { t: 'engine', s: 'asyncio' },
+  { t: 'Postgres', s: 'durable' },
+];
+const busY = 220, busH = 34;
+// v2 parts (inside one process)
+const engY = 96, engH = 52;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Version 1 versus version 2, structural contrast. Version 1 is many moving parts coordinating over a shared Redis bus: a FastAPI backend, a standalone Python asyncio engine, and Postgres, all talking through Redis, which serves as both the command bus and the realtime fanout — the single fragility concentration point. Version 2 is one process: tokio tasks feed a single dedicated engine thread — the only writer, no locks — over lock-free SPSC and SPMC rings, with a journal write-ahead log for durability. The contrast is shape: many parts over a bus versus one writer in one process.">
+    <defs>
+      <marker id="vs-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)" /></marker>
+      <marker id="vs-arr-acc" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--accent)" /></marker>
+    </defs>
+
+    {/* ===== v1 panel ===== */}
+    <text x={leftX + colW / 2} y={26} text-anchor="middle" class="ptitle">v1 · many parts over a bus</text>
+    <rect x={leftX} y={panelY} width={colW} height={panelH} rx="8" fill="none" stroke="var(--border)" stroke-dasharray="4 3" />
+
+    {v1.map((p, i) => {
+      const bw = 76, bh = 44, gapB = (colW - 48 - 3 * bw) / 2;
+      const bx = leftX + 24 + i * (bw + gapB), by = panelY + 24;
+      return (
+        <g>
+          <rect x={bx} y={by} width={bw} height={bh} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+          <text x={bx + bw / 2} y={by + bh / 2 - 2} text-anchor="middle" class="btask">{p.t}</text>
+          <text x={bx + bw / 2} y={by + bh / 2 + 12} text-anchor="middle" class="bsub">{p.s}</text>
+          <line x1={bx + bw / 2} y1={by + bh} x2={bx + bw / 2} y2={busY - 2} stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="3 2" marker-end="url(#vs-arr)" />
+        </g>
+      );
+    })}
+
+    {/* the Redis bus — the fragility concentration point */}
+    <rect x={leftX + 24} y={busY} width={colW - 48} height={busH} rx="6" fill="var(--bg-soft)" stroke="var(--muted)" stroke-width="2" />
+    <text x={leftX + colW / 2} y={busY + 15} text-anchor="middle" class="btitle">Redis bus</text>
+    <text x={leftX + colW / 2} y={busY + 28} text-anchor="middle" class="bsub">command bus + fanout · one fragility point</text>
+    <text x={leftX + colW / 2} y={busY + busH + 22} text-anchor="middle" class="ptag">async · eventually consistent · 3 units to coordinate</text>
+
+    {/* ===== v2 panel ===== */}
+    <text x={rightX + colW / 2} y={26} text-anchor="middle" class="ptitle acc">v2 · one writer, one process</text>
+    <rect x={rightX} y={panelY} width={colW} height={panelH} rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5" />
+    <text x={rightX + colW / 2} y={panelY + 18} text-anchor="middle" class="bsub acc">one process</text>
+
+    {/* tokio tasks */}
+    <rect x={rightX + 24} y={engY - 40} width={colW - 48} height={26} rx="6" fill="var(--bg)" stroke="var(--border)" />
+    <text x={rightX + colW / 2} y={engY - 23} text-anchor="middle" class="btask">tokio tasks · ingress + egress</text>
+
+    {/* the single engine thread */}
+    <rect x={rightX + 24} y={engY} width={colW - 48} height={engH} rx="6" fill="var(--bg)" stroke="var(--accent)" stroke-width="2" />
+    <text x={rightX + colW / 2} y={engY + 21} text-anchor="middle" class="btitle acc">engine thread</text>
+    <text x={rightX + colW / 2} y={engY + 38} text-anchor="middle" class="bsub">single writer · no locks</text>
+
+    {/* rings in / out */}
+    <line x1={rightX + colW / 2} y1={engY - 14} x2={rightX + colW / 2} y2={engY - 2} stroke="var(--accent)" stroke-width="1.5" marker-end="url(#vs-arr-acc)" />
+    <text x={rightX + colW / 2 + 44} y={engY - 4} text-anchor="middle" class="ring">SPSC in</text>
+    <line x1={rightX + colW / 2} y1={engY + engH} x2={rightX + colW / 2} y2={engY + engH + 22} stroke="var(--accent)" stroke-width="1.5" marker-end="url(#vs-arr-acc)" />
+    <text x={rightX + colW / 2 + 48} y={engY + engH + 16} text-anchor="middle" class="ring">SPMC out</text>
+
+    {/* journal WAL */}
+    <rect x={rightX + 24} y={engY + engH + 34} width={colW - 48} height={30} rx="6" fill="var(--bg)" stroke="var(--border)" />
+    <text x={rightX + colW / 2} y={engY + engH + 53} text-anchor="middle" class="btask">journal (WAL) · durable in intent</text>
+    <text x={rightX + colW / 2} y={engY + engH + 88} text-anchor="middle" class="ptag acc">lock-free rings · deterministic · 1 unit</text>
+  </svg>
+  <figcaption>What v1 and v2 actually are, as shapes. v1 is three units — a FastAPI backend, a Python asyncio engine, and Postgres — coordinating over a Redis bus that carries both commands and fanout, so it is async and eventually consistent. v2 collapses that into one process with a single writer thread reached over lock-free rings, which is what makes it deterministic.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.ptitle) { font-size: 12.5px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.ptitle.acc) { fill: var(--accent); }
+  .chart :global(.btitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.btitle.acc) { fill: var(--accent); }
+  .chart :global(.btask) { font-size: 11px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.bsub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.bsub.acc) { fill: var(--accent); }
+  .chart :global(.ring) { font-size: 10px; fill: var(--accent); font-family: var(--font-mono); }
+  .chart :global(.ptag) { font-size: 10px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.ptag.acc) { fill: var(--accent); }
+</style>

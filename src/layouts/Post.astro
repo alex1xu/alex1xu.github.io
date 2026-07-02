@@ -2,6 +2,7 @@
 import Base from './Base.astro';
 import Hero from '../components/Hero.astro';
 import ShareButton from '../components/ShareButton.astro';
+import ReadingAids from '../components/ReadingAids.astro';
 import giscus from '../data/giscus.json';
 
 interface Props {
@@ -18,6 +19,7 @@ const formatted = new Date(date).toLocaleDateString('en-US', {
 });
 ---
 <Base title={title} description={description}>
+  <ReadingAids />
   <Hero page="blog" />
   <a href="/blog" class="back-link">← Blog</a>
   <article class="prose">

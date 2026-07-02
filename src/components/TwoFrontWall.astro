@@ -9,7 +9,7 @@ const data = [
   { label: 'client-throttle ceiling', value: 225, kind: 'mine', note: '10–20% of target · ~150–300 offered' },
   { label: 'server saturation ceiling', value: 286, kind: 'mine', note: '~150–286 accepted RPS' },
 ];
-const W = 640, rowH = 46, top = 18, labelW = 186, barMax = 340;
+const W = 640, rowH = 46, top = 18, labelW = 196, barMax = 340;
 const H = top + data.length * rowH + 52;
 const x = (v) => (v / target) * barMax;
 const fill = { target: 'var(--done)', mine: 'var(--accent)' };
@@ -53,7 +53,7 @@ const tgtX = labelW + barMax;
     line-height: 1.5;
   }
   .chart :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); }
-  .chart :global(.sub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.sub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
   .chart :global(.val) { font-size: 13px; fill: var(--muted); font-family: var(--font-mono); }
   .chart :global(.ax)  { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
   .chart :global(.callout) { font-size: 11px; fill: var(--accent); font-family: var(--font-mono); }

@@ -1,0 +1,86 @@
+---
+// One command's journey through the v2 engine, one level deeper than NewTopology.
+// ingress (sequences) → inbound SPSC ring → the single engine thread, where matching
+// walks the ArrayLadder and relinks slots in the object-pool arena → outbound SPMC
+// ring → egress. The journal WAL tees off ingress: a command is queued for durability
+// before it is ever pushed onto the inbound ring. Accent = the hot path (mine).
+const W = 640, H = 300;
+// ingress / egress
+const inX = 84, inW = 96, inY = 116, inH = 48;
+const egX = 592, egW = 84, egY = 116, egH = 48;
+const inCy = inY + inH / 2, egCy = egY + egH / 2;
+// engine thread box (highlight) with two inner boxes
+const enX = 186, enY = 66, enW = 300, enH = 156;
+const enCx = enX + enW / 2, enCy = enY + enH / 2;
+const innerX = enX + 16, innerW = enW - 32;
+const ladderY = enY + 46, ladderH = 44;
+const arenaY = enY + 100, arenaH = 44;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="One command's path through the v2 engine. Ingress assigns the global sequence number, then hands the command over an inbound single-producer single-consumer ring to the single engine thread. Inside that one thread — the only writer, no locks — matching walks the ArrayLadder (the 1 to 99 cent array with an O(1) best-price cursor) and relinks resting orders through an intrusive list in the object-pool arena, so nothing allocates on the hot path. Results leave over an outbound single-producer multi-consumer ring to egress. The journal write-ahead log tees off ingress: every command is queued for durability before it is pushed onto the inbound ring.">
+    <defs>
+      <marker id="hp-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
+      <marker id="hp-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
+    </defs>
+
+    {/* ingress */}
+    <rect x={inX - inW / 2} y={inY} width={inW} height={inH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={inX} y={inCy - 2} text-anchor="middle" class="btitle">ingress</text>
+    <text x={inX} y={inCy + 14} text-anchor="middle" class="bsub">assigns seq #</text>
+
+    {/* ingress → SPSC in → engine */}
+    <line x1={inX + inW / 2} y1={inCy} x2={enX - 3} y2={enCy} stroke="var(--accent)" stroke-width="1.8" marker-end="url(#hp-arr-acc)" />
+    <text x={(inX + inW / 2 + enX) / 2} y={enCy - 8} text-anchor="middle" class="ring">SPSC in</text>
+
+    {/* engine thread (highlight) */}
+    <rect x={enX} y={enY} width={enW} height={enH} rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" />
+    <text x={enCx} y={enY + 20} text-anchor="middle" class="btitle acc">engine thread</text>
+    <text x={enCx} y={enY + 34} text-anchor="middle" class="bsub acc">single writer · no locks · busy-spin</text>
+
+    {/* inner: ArrayLadder (where matching happens) */}
+    <rect x={innerX} y={ladderY} width={innerW} height={ladderH} rx="6" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.2" />
+    <text x={enCx} y={ladderY + 18} text-anchor="middle" class="btask">ArrayLadder · match here</text>
+    <text x={enCx} y={ladderY + 33} text-anchor="middle" class="bsub">1–99¢ · O(1) index · best-price cursor</text>
+
+    {/* inner: arena */}
+    <rect x={innerX} y={arenaY} width={innerW} height={arenaH} rx="6" fill="var(--bg)" stroke="var(--border)" />
+    <text x={enCx} y={arenaY + 18} text-anchor="middle" class="btask">arena</text>
+    <text x={enCx} y={arenaY + 33} text-anchor="middle" class="bsub">object pool · intrusive list · no hot-path alloc</text>
+
+    {/* ladder ↔ arena: relink, not allocate */}
+    <line x1={enCx} y1={ladderY + ladderH} x2={enCx} y2={arenaY - 2} stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#hp-arr-acc)" />
+
+    {/* engine → SPMC out → egress */}
+    <line x1={enX + enW} y1={enCy} x2={egX - egW / 2 - 3} y2={egCy} stroke="var(--accent)" stroke-width="1.8" marker-end="url(#hp-arr-acc)" />
+    <text x={(enX + enW + egX - egW / 2) / 2} y={enCy - 8} text-anchor="middle" class="ring">SPMC out</text>
+
+    {/* egress */}
+    <rect x={egX - egW / 2} y={egY} width={egW} height={egH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={egX} y={egCy - 2} text-anchor="middle" class="btitle">egress</text>
+    <text x={egX} y={egCy + 14} text-anchor="middle" class="bsub">broadcast</text>
+
+    {/* journal WAL tee off ingress (before the inbound ring) */}
+    <line x1={inX} y1={inY + inH} x2={inX} y2={H - 56} stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#hp-arr)" />
+    <rect x={inX - 80} y={H - 54} width={160} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={inX} y={H - 37} text-anchor="middle" class="btask">journal (WAL)</text>
+    <text x={inX} y={H - 23} text-anchor="middle" class="bsub">queued before the ring</text>
+  </svg>
+  <figcaption>One level deeper than the process view: a command is sequenced at ingress, crosses the inbound SPSC ring, and inside the single engine thread matching walks the <code>ArrayLadder</code> and relinks slots in the object-pool <code>arena</code> — never allocating — before results leave over the outbound SPMC ring. The journal WAL tees off ingress, so a command is queued for durability before it is ever pushed onto the ring.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.btitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.btitle.acc) { fill: var(--accent); }
+  .chart :global(.btask) { font-size: 11.5px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.bsub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.bsub.acc) { fill: var(--accent); }
+  .chart :global(.ring) { font-size: 10.5px; fill: var(--accent); font-family: var(--font-mono); }
+</style>

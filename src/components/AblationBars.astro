@@ -1,5 +1,5 @@
 ---
-// The ablation payoff (§8): what each v2 design choice is worth, measured by
+// The ablation payoff: what each v2 design choice is worth, measured by
 // regressing exactly one thing and replaying an identical command stream.
 // Bars are the THROUGHPUT slowdown factor when the choice is removed — the
 // precise signal (latency is power-of-two bucketed, so it's not plotted here).
@@ -15,7 +15,7 @@ const data = [
 // log scale so 1.12× and 63.5× coexist legibly and the dominance still reads.
 const minF = 1, maxF = 70;
 const lx = (f) => (Math.log(f) - Math.log(minF)) / (Math.log(maxF) - Math.log(minF));
-const W = 640, rowH = 52, top = 20, labelW = 176, barMax = 380;
+const W = 640, rowH = 52, top = 20, labelW = 186, barMax = 380;
 const H = top + data.length * rowH + 30;
 const x = (f) => Math.max(lx(f) * barMax, 3);
 const fill = { primary: 'var(--accent)', secondary: 'var(--muted)' };
@@ -38,8 +38,10 @@ const ticks = [1, 2, 5, 10, 20, 50];
       const bw = x(d.factor);
       return (
         <g>
-          <text x={labelW - 12} y={y + 17} text-anchor="end" class="lbl">{d.label}</text>
-          <text x={labelW - 12} y={y + 32} text-anchor="end" class="sub">{d.note}</text>
+          <text x={labelW - 12} y={y + 15} text-anchor="end" class="lbl">{d.label}</text>
+          {d.note.split(' · ').map((line, k) => (
+            <text x={labelW - 12} y={y + 29 + k * 12} text-anchor="end" class="sub">{line}</text>
+          ))}
           <rect x={labelW} y={y + 3} width={bw} height={rowH - 22} rx="2" fill={fill[d.kind]} />
           <text x={labelW + bw + 8} y={y + 18} class="val">×{d.factor}</text>
         </g>
