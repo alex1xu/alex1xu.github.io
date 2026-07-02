@@ -1,0 +1,68 @@
+---
+// v1 architecture: browser → FastAPI → Redis (streams + pub/sub) → asyncio engine → Postgres.
+// Redis is the fragility concentration point; POST returns 202 (async) and fanout is via pub/sub.
+const boxes = [
+  { title: 'Browser', sub: 'React' },
+  { title: 'FastAPI', sub: 'backend' },
+  { title: 'Redis', sub: 'streams + pub/sub', fragile: true },
+  { title: 'asyncio engine', sub: 'Python' },
+  { title: 'Postgres', sub: 'durable' },
+];
+const W = 640, H = 292, bw = 96, bh = 54, top = 120, pitch = 132, x0 = 8;
+const bx = (i) => x0 + i * pitch;
+const cy = top + bh / 2;
+const redisC = bx(2) + bw / 2;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v1 topology: Browser (React) to FastAPI backend to Redis (streams as command bus, pub/sub as fanout) to a Python asyncio engine to Postgres. POST /orders returns 202 pending asynchronously, and order updates fan out over WebSocket via Redis pub/sub. Redis concentrates the fragility.">
+    <defs>
+      <marker id="ot-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
+      <marker id="ot-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
+    </defs>
+
+    {/* async 202 return: FastAPI top → Browser top */}
+    <path d={`M${bx(1) + bw / 2},${top} Q${(bx(0) + bx(1)) / 2 + bw / 2},44 ${bx(0) + bw / 2},${top}`} fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ot-arr-acc)" />
+    <text x={(bx(0) + bx(1)) / 2 + bw / 2} y={38} text-anchor="middle" class="note acc">POST /orders → 202 pending</text>
+
+    {/* WS fanout: engine bottom → browser bottom (conceptually through Redis pub/sub) */}
+    <path d={`M${bx(3) + bw / 2},${top + bh} Q${(bx(0) + bx(3)) / 2 + bw / 2},252 ${bx(0) + bw / 2},${top + bh}`} fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ot-arr)" />
+    <text x={(bx(0) + bx(3)) / 2 + bw / 2} y={266} text-anchor="middle" class="note">WS fanout via Redis Pub/Sub</text>
+
+    {/* main chain arrows */}
+    {boxes.slice(0, -1).map((_, i) => (
+      <line x1={bx(i) + bw} y1={cy} x2={bx(i + 1) - 3} y2={cy} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ot-arr)" />
+    ))}
+
+    {/* boxes */}
+    {boxes.map((b, i) => (
+      <g>
+        <rect x={bx(i)} y={top} width={bw} height={bh} rx="6"
+          fill="var(--bg-soft)"
+          stroke={b.fragile ? 'var(--muted)' : 'var(--border)'}
+          stroke-width={b.fragile ? 2 : 1} />
+        <text x={bx(i) + bw / 2} y={cy - 3} text-anchor="middle" class="btitle">{b.title}</text>
+        <text x={bx(i) + bw / 2} y={cy + 14} text-anchor="middle" class="bsub">{b.sub}</text>
+      </g>
+    ))}
+
+    <text x={redisC} y={top + bh + 20} text-anchor="middle" class="note">Streams = command bus · Pub/Sub = fanout</text>
+    <text x={redisC} y={top + bh + 34} text-anchor="middle" class="note dim">single point of fragility</text>
+  </svg>
+  <figcaption>The v1 write path returns <code>202 pending</code> before the engine has applied the order, so clients briefly see an eventually-consistent view; Redis carries both the command bus and the fanout, concentrating the failure surface.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.btitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.bsub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.note) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.note.acc) { fill: var(--accent); }
+  .chart :global(.note.dim) { font-size: 10px; }
+</style>

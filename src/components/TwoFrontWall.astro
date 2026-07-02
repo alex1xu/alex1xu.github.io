@@ -1,0 +1,59 @@
+---
+// The two-front load-test failure. Target ~1000 RPS, but two independent ceilings capped it:
+// the client self-throttled to 10–20% of target, and the server saturated at ~150–286 accepted RPS.
+// Bars vs the 1000 RPS target line. Numbers are real (Tier A).
+const target = 1000;
+const data = [
+  { label: 'target', value: 1000, kind: 'target', note: 'intended load' },
+  { label: 'client-throttle ceiling', value: 175, kind: 'mine', note: 'self-throttled to 10–20% of target' },
+  { label: 'server saturation ceiling', value: 286, kind: 'mine', note: '~150–286 accepted RPS' },
+];
+const W = 640, rowH = 46, top = 18, labelW = 186, barMax = 340;
+const H = top + data.length * rowH + 52;
+const x = (v) => (v / target) * barMax;
+const fill = { target: 'var(--done)', mine: 'var(--accent)' };
+const tgtX = labelW + barMax;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Two-front load-test failure against a 1000 RPS target. The client self-throttled to 10–20% of target (roughly 175 RPS), and independently the server saturated at 150–286 accepted RPS, with p99 latency of 28 to 78 seconds and up to 17,002 orders backlogged.">
+    <line x1={tgtX} y1={top - 8} x2={tgtX} y2={top + data.length * rowH} stroke="var(--border)" stroke-dasharray="3 3" />
+    <text x={tgtX} y={top + data.length * rowH + 16} text-anchor="middle" class="ax">target 1000</text>
+
+    {data.map((d, i) => {
+      const y = top + i * rowH;
+      const bw = Math.max(x(d.value), 2);
+      const isTarget = d.kind === 'target';
+      return (
+        <g>
+          <text x={labelW - 12} y={y + 15} text-anchor="end" class="lbl">{d.label}</text>
+          <text x={labelW - 12} y={y + 30} text-anchor="end" class="sub">{d.note}</text>
+          <rect x={labelW} y={y + 2} width={bw} height={rowH - 18} rx="2"
+            fill={isTarget ? 'none' : fill[d.kind]}
+            stroke={isTarget ? 'var(--done)' : 'none'}
+            stroke-width={isTarget ? 1.5 : 0}
+            stroke-dasharray={isTarget ? '5 3' : '0'} />
+          <text x={labelW + bw + 8} y={y + 16} class="val">{d.value} RPS</text>
+        </g>
+      );
+    })}
+
+    <text x={labelW} y={top + data.length * rowH + 34} text-anchor="start" class="callout">p99 28–78 s · up to 17,002 orders backlogged</text>
+  </svg>
+  <figcaption>Two independent ceilings, not one: the client never sent more than 10–20% of the intended load, while the server saturated at 150–286 accepted RPS with p99 latency blowing out to 28–78 s and a backlog reaching 17,002 orders. Fixing one wouldn't have revealed the other.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.sub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.val) { font-size: 13px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.ax)  { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.callout) { font-size: 11px; fill: var(--accent); font-family: var(--font-mono); }
+</style>

@@ -1,0 +1,68 @@
+---
+// The correctness oracle: one command stream forks into OrderBook (fast, array ladder) and
+// RefBook (slow, rescan Vec). A comparator asserts equal events + snapshot on every command;
+// any mismatch rings the divergence bell.
+const W = 640, H = 268;
+const srcX = 92, srcY = 118, srcW = 116, srcH = 48;
+const fastX = 300, fastY = 44, refX = 300, refY = 168, dutW = 148, dutH = 52;
+const cmpX = 494, cmpY = 100, cmpW = 108, cmpH = 60;
+const srcCy = srcY + srcH / 2;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Differential test harness: one command stream forks into two implementations — OrderBook (the fast array-ladder book) and RefBook (a slow reference that rescans a Vec). A comparator asserts their emitted events and full snapshot are equal after every command; on any mismatch a divergence bell fires.">
+    <defs>
+      <marker id="dh-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
+      <marker id="dh-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
+      <marker id="dh-arr-done" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--done)" /></marker>
+    </defs>
+
+    {/* command source */}
+    <rect x={srcX - srcW / 2} y={srcY} width={srcW} height={srcH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={srcX} y={srcCy - 2} text-anchor="middle" class="btitle">command stream</text>
+    <text x={srcX} y={srcCy + 14} text-anchor="middle" class="bsub">one input, forked</text>
+
+    {/* fork arrows */}
+    <path d={`M${srcX + srcW / 2},${srcCy} Q${(srcX + fastX) / 2},${srcCy} ${fastX - dutW / 2 - 3},${fastY + dutH / 2}`} fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#dh-arr-acc)" />
+    <path d={`M${srcX + srcW / 2},${srcCy} Q${(srcX + refX) / 2},${srcCy} ${refX - dutW / 2 - 3},${refY + dutH / 2}`} fill="none" stroke="var(--done)" stroke-width="1.6" marker-end="url(#dh-arr-done)" />
+
+    {/* fast: OrderBook */}
+    <rect x={fastX - dutW / 2} y={fastY} width={dutW} height={dutH} rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" />
+    <text x={fastX} y={fastY + dutH / 2 - 3} text-anchor="middle" class="btitle acc">OrderBook</text>
+    <text x={fastX} y={fastY + dutH / 2 + 14} text-anchor="middle" class="bsub">fast · array ladder</text>
+
+    {/* ref: RefBook */}
+    <rect x={refX - dutW / 2} y={refY} width={dutW} height={dutH} rx="6" fill="var(--bg-soft)" stroke="var(--done)" stroke-width="2" />
+    <text x={refX} y={refY + dutH / 2 - 3} text-anchor="middle" class="btitle done">RefBook</text>
+    <text x={refX} y={refY + dutH / 2 + 14} text-anchor="middle" class="bsub">slow · rescan Vec</text>
+
+    {/* into comparator */}
+    <path d={`M${fastX + dutW / 2},${fastY + dutH / 2} Q${(fastX + cmpX) / 2 + 20},${fastY + dutH / 2} ${cmpX - cmpW / 2 - 3},${cmpY + 18}`} fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#dh-arr-acc)" />
+    <path d={`M${refX + dutW / 2},${refY + dutH / 2} Q${(refX + cmpX) / 2 + 20},${refY + dutH / 2} ${cmpX - cmpW / 2 - 3},${cmpY + cmpH - 18}`} fill="none" stroke="var(--done)" stroke-width="1.6" marker-end="url(#dh-arr-done)" />
+
+    {/* comparator */}
+    <rect x={cmpX - cmpW / 2} y={cmpY} width={cmpW} height={cmpH} rx="6" fill="var(--bg-soft)" stroke="var(--fg)" stroke-width="1.5" />
+    <text x={cmpX} y={cmpY + 22} text-anchor="middle" class="btitle">assert ==</text>
+    <text x={cmpX} y={cmpY + 38} text-anchor="middle" class="bsub">events + snapshot</text>
+    <text x={cmpX} y={cmpY + 52} text-anchor="middle" class="bsub">every command</text>
+
+    {/* divergence bell on mismatch */}
+    <text x={cmpX} y={cmpY + cmpH + 26} text-anchor="middle" class="bell">△ mismatch → divergence</text>
+  </svg>
+  <figcaption>Trust a clever data structure by diffing it against a dumb one on every input: the array-ladder <code>OrderBook</code> and a rescan-<code>Vec</code> <code>RefBook</code> consume the same commands, and any divergence in emitted events or the full snapshot fails the test immediately.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.btitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.btitle.acc) { fill: var(--accent); }
+  .chart :global(.btitle.done) { fill: var(--done); }
+  .chart :global(.bsub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.bell) { font-size: 11px; fill: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+</style>

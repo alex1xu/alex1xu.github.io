@@ -1,0 +1,194 @@
+---
+title: "The exchange that saturated, and the one that didn't"
+date: "2026-07-02"
+description: "A Mario Kart prediction market that fell over at a few hundred orders a second, rebuilt in Rust to sustain 20,000 with a p99 of 66 microseconds — and why almost none of the speedup came from 'Rust is faster than Python.'"
+tags: ["rust", "systems", "trading", "orderbook", "performance", "lock-free"]
+---
+
+import Callout from '../../components/Callout.astro';
+import CodeCard from '../../components/CodeCard.astro';
+import OldTopology from '../../components/OldTopology.astro';
+import ArrayLadder from '../../components/ArrayLadder.astro';
+import TwoFrontWall from '../../components/TwoFrontWall.astro';
+import NewTopology from '../../components/NewTopology.astro';
+import DifferentialHarness from '../../components/DifferentialHarness.astro';
+import ThroughputWall from '../../components/ThroughputWall.astro';
+
+Last winter, about 150 college students spent an afternoon trading binary contracts on prerecorded Mario Kart races while the standings updated on a projector at the front of the room. There was real money on the line and a live commentator calling the races. The Python exchange behind it worked — and then, under load, it didn't.
+
+I spent the months after rebuilding it from scratch in Rust. The rewrite sustains 20,000 orders a second at a p99 of 66 microseconds and has never dropped a message; the original saturated somewhere south of 300 accepted orders a second with a p99 that climbed into the tens of *seconds*. That's the headline, and it's the least interesting part. A trading engine that's fast but occasionally loses an order, double-settles a position, or serves stale P&L is worse than a slow one — in a live competition with real money, someone notices. So this is really two stories braided together: going roughly 60× faster, and having to become *more* correct, not less, to do it. Almost none of the speed came from the language.
+
+## The game, and why it needed a real exchange
+
+The instrument is a Kalshi-style binary prediction market: one market per racer, asking "does this racer win?" You trade YES or NO contracts priced in integer cents on a 1–99 ladder, where a YES and a NO always sum to 100¢, and at the end of the race the market settles to 0 or 100 depending on the outcome. Buy YES at 40¢, the racer wins, you're paid 100 — that's the whole payoff structure. Simple to state, and exactly the shape of a real exchange underneath.
+
+Because it *is* a real exchange underneath. Every market is a continuous limit order book with price-time priority: limit and market orders, partial fills, cancels, resting liquidity, a matching engine deciding who trades with whom and at what price. On top of that sit wallets, per-market P&L, and a cumulative leaderboard, with four races open at once so four books are live simultaneously and 150 people are hitting all of them. That last detail is the one that matters — throughput and latency stop being abstractions the moment you picture 150 laptops firing orders at the same four books while the standings tick over on the projector and someone's shouting about a blue shell. A few hundred milliseconds of lag is the difference between a fill and a miss, and everyone can see the board.
+
+The first version shipped and ran the event. It was built by a small student team on a five-week deadline, and I drove the matching engine, the performance work, and the exchange mechanics. It worked well enough to run a room of 150 traders — and then I spent the next few months rebuilding the whole thing alone in Rust, because "worked well enough on the day" turned out to hide a lot. Both halves of this post are about what the second attempt taught me that the first couldn't: the speed story, and the quieter, scarier correctness story.
+
+## Version one: Python, Redis, and a board game underneath
+
+Here's an honest detail to start with: the repo didn't begin life as an exchange. It started as a Snakes-and-Ladders board-game backend, and the exchange got grafted on top, which is why to this day the database tables carry a `calshi_` prefix — a fossil from the thing it used to be. I mention it not to dunk on it but because it sets the tone. This was a system assembled at speed out of what was already there.
+
+The topology was a React frontend, a FastAPI backend, a standalone Python asyncio matching engine, Redis doing double duty as both the command bus (Streams) and the realtime fanout (pub/sub), and Postgres as the authoritative state.
+
+<OldTopology />
+
+The design was CQRS from the very first commit, and aggressively async. `POST /orders` returned `202 Accepted` immediately — it did *not* persist the order or match it. It dropped the command onto a Redis stream and returned. The engine consumed the stream, matched in memory, then persisted the result to Postgres and published fills over pub/sub; the browser learned what happened when a WebSocket message told it to invalidate its query cache and refetch. This is a clean pattern on paper, and it has a built-in consequence you feel immediately: eventual consistency. The UI's view of your P&L always lags a refetch. "I placed an order but I don't see it yet" isn't a bug in that architecture, it's the architecture — the acknowledgment and the truth live in different places and arrive at different times.
+
+The thing worth saying clearly is that the matching *core* was fine. One shared order book per market, a trade crosses when a YES bid and a NO bid sum to at least 100, FIFO price-time priority, and fills happen at the resting order's price. That logic was sound and stayed sound. Keep this in mind, because it's the whole surprise of the post-mortem later: the engine at the center was never really the problem. The blood was all in the plumbing wrapped around it — the bus, the cache, the fanout, the places where two things had to agree and didn't.
+
+## The first real win: a tree, then an array
+
+The one performance optimization from v1 that's genuinely worth teaching is also the insight the entire rewrite is built on, so it's worth slowing down for.
+
+The order book started as a `SortedDict` — a balanced tree keyed by price, giving O(log n) inserts and lookups at each price level. That's the reflexive data structure for a book, and for a general exchange with unbounded prices it's the right one. But this exchange doesn't have unbounded prices. Contracts trade on a 1–99 cent ladder. The set of possible price levels is exactly 99 integers, known ahead of time, forever.
+
+So the tree is pure overhead. If a price level is just an integer in `[1, 99]`, then a level *is* an array index. The rewrite replaced the `SortedDict` with a fixed 99-slot bucket array: inserting or looking up a level is O(1) direct indexing, and finding the best price is a small bounded backward scan from where you last saw it (`_rescan_best`) across at most 99 slots. No comparisons, no tree balancing, no pointer chasing. The entire trick is one observation — you don't need a comparison-based data structure when your key space is 99 known integers — and once you see it you can't unsee it.
+
+<ArrayLadder />
+
+I want to be careful here, because this is exactly the kind of claim that's easy to wave at. The per-operation latency win from this change was the documented *goal* of the optimization, but it was never benchmarked in isolation on the old system — so I'm labeling the speedup **projected**, not measured. What I can say without a number is structural: O(log n) level ops became O(1), and the constant factors of a flat array against a tree of boxed nodes are not close. What makes this satisfying is that I later got to measure the *same idea* cleanly, because v2's order book is built on precisely this insight — a flat array indexed by cent, which I called the `ArrayLadder`. The rewrite didn't discover the trick. It industrialized it: the same "bounded price space collapses to an array" observation, this time with an intrusive linked list threading time priority through each level and an object-pool arena behind it so there's no per-order allocation at all. One diagram serves both versions, because conceptually it's one data structure that got built twice.
+
+## The wall: two ways a load test can lie
+
+The rewrite happened because the old system hit a wall under load. But the genuinely interesting thing — the part I'd point an interviewer at — is that the load test that found the wall was lying to me, and disentangling the lie from the truth is the actual lesson.
+
+The targets were modest by exchange standards and appropriate for the event: the roadmap wanted 1,000 requests a second, verification aimed for 500 orders a second across 150 users, with 200 concurrent users as the ceiling. What actually happened under load was a *two-front* failure, and for a while I couldn't tell the two fronts apart.
+
+**Front one: the load generator was the bottleneck, not the server.** The load client was a single Python process on a single asyncio event loop — no `uvloop`, no multiprocessing. One process was opening 200-plus WebSocket connections, firing HTTP order submissions, *and* draining the inbound flood of book updates and trade notifications coming back, all on one GIL-bound core. That core saturated long before the server did, and the client quietly throttled itself to somewhere around 10–20% of the target rate. It wasn't measuring the exchange's ceiling; it was measuring its own. The telltale sign was a `--no-ws` flag that existed specifically to stop draining inbound traffic and measure HTTP submission alone — which is a flag you only add once you've realized the receiving side of your own load test is eating your throughput.
+
+**Front two: underneath the throttled client, the server was also saturating.** Even at 10–20% of target, the single-threaded engine — four asyncio actors per market — topped out at roughly **150–286 accepted orders a second**, with a p99 latency between **28 and 78 seconds** and an order backlog that climbed as high as **17,002** queued commands. There was a Grafana row labeled "Engine Queueing" built to watch exactly this pileup, which tells you it was a known failure mode, not a surprise.
+
+<TwoFrontWall />
+
+The honest reading is that you *cannot* cleanly measure the server's ceiling with this setup, because the client caps first. But both bottlenecks were real, and both pointed the same direction: this design can't take the load it was built for. The network was never close to the limit — aggregate traffic stayed under half a megabit a second — so this was pure compute and coordination overhead, not bandwidth.
+
+<Callout type="lesson" title="A closed-loop load test on one event loop measures the load test">
+When your load generator drives connections, sends orders, and drains responses all on a single event loop, a saturated generator and a saturated server produce the *same* symptom: the achieved rate flatlines below target. You have to rule out the client before you can trust the server number — and if you can't run the generator on separate hardware, you at least have to know which ceiling you're looking at. Two independent bottlenecks stacked on top of each other look exactly like one.
+</Callout>
+
+## The case for a rewrite: it was never just speed
+
+Speed was the visible problem. The scarier one was quieter, and I only really saw it while writing the post-mortem: the old system had almost no way to prove it hadn't corrupted itself.
+
+The durability story was the sharpest edge. The engine's `persist_*` functions — the ones that write state to Postgres — had *zero live callers* during a round. The in-memory heap was the only truth, and the database got written only at settlement. A crash mid-round didn't lose the last few seconds; it lost the entire round. And because settlement had two divergent code paths — one reading in-memory state, one reading Postgres — there was a live risk of double-paying a position if the two ever disagreed about what someone held.
+
+The rest of the ledger was of a piece:
+
+- The Redis control bus was untyped and unacknowledged — commands went out as loosely-shaped messages with no delivery guarantee and no schema enforcing what a valid command even looked like.
+- The read path forked on a `live_read_source` flag that chose Redis-cache-as-truth or Postgres-as-truth per endpoint, so "what's my balance" could be answered by two different sources that could disagree.
+- Concurrency was an afterthought. The clearest example is BUG-005: a per-channel WebSocket sequence map was mutated from several worker coroutines with no lock, so sequence numbers could race and corrupt. The root-cause fix — an `asyncio.Lock` — lives in a single commit, `e1778f8`, on a branch someone named `ws-but-fixed-4real`. The branch name is the whole story.
+- Documentation had drifted from code in ways that each hid a real hazard: the position limit was hardcoded to 100, not the 200 the docs claimed; starting balances were 0, not the documented 100k; there was no ownership check on cancels, so nothing structurally stopped one user cancelling another's order; the "49 tests" in the docs were actually 60. Small, except the cross-process money path underneath them was untested.
+
+Here's the meta-pattern, and it's the claim of this whole section: nearly every scar was a concurrency or consistency bug at a *seam an optimization introduced*. The matching logic in the middle was stable. The distributed plumbing built around it to make it fast and scalable — the async bus, the cache, the sharded fanout — is where every real bug lived.
+
+<Callout type="lesson" title="The bugs cluster at the seams optimizations add">
+The core algorithm was correct the whole time. What broke was everything added *around* it to make it fast: the command bus, the cache-as-truth read path, the multi-coroutine fanout. Each optimization introduced a seam where two components had to agree about state, and each seam was a place they eventually didn't. Speeding a system up by distributing it means every new boundary is a new correctness liability.
+</Callout>
+
+So the design brief for the rewrite wasn't "make it fast." It was "make it fast *and* provably correct, as one discipline instead of a tradeoff." One source of truth instead of a cache and a database that fork. One transport instead of a bus bolted onto a pub/sub. Real backpressure instead of an unbounded backlog. Invariants enforced by the type system instead of by a `# type: ignore` and a hope. One note before the design, to kill an easy misread: money was integer cents in *both* versions. This was never a floats-are-wrong story. The argument for the rewrite is durability, typed transport, and the absence of double-settlement — not arithmetic.
+
+## Version two: one thread, no locks, one source of truth
+
+The cleanest way to present the v2 design is as a list of answers, because that's what it is — each major decision is the direct response to a specific v1 failure.
+
+**v1 raced state across coroutines and processes; v2 has a single writer.** One engine OS thread owns every order book and every wallet for the live round. There are no locks on the hot path and no shared mutable state across threads, because there's nothing to share — one thread does all the mutation. The immediate payoff is determinism: feed the engine the same sequence of commands and you get bit-for-bit identical output, every time, which is the property the entire correctness story later rests on.
+
+**v1's notion of "who was first" was ambiguous across a sharded bus; v2 decides fairness at exactly one point.** A single ingress task assigns the global sequence number to every command as it arrives, at one location in the code. That sequence number *is* the fairness anchor — the order in which the engine sees commands is fixed there and never reconsidered. Price-time priority means nothing if two components disagree about the time; v2 has exactly one clock that matters.
+
+**v1 used Redis as both bus and fanout, which is where BUG-005 lived; v2 uses lock-free rings.** Commands flow from ingress to the engine over a single-producer single-consumer ring, and events flow back out over another. The engine busy-spins on a pinned core reading its inbound ring and never touches an async runtime — no `await`, no scheduler, no futures, just a thread in a loop. I'll come back to how I convinced myself the ring is actually correct, because a hand-rolled lock-free queue is exactly the kind of thing that's subtly wrong for months.
+
+**v1 had no mid-round durability; v2 journals without ever gating the engine.** Ingress *tees* each sequenced command to a write-ahead log as a side effect, on a path separate from the ring that feeds the engine. This is the important part: the journal physically *cannot* backpressure the engine, because the engine doesn't consume from the journal — the journal is downstream of ingress, not upstream of the hot path. Durability that can't slow you down, because it isn't on the road. `fsync` is batched via group-commit so durability costs one flush per batch, not one per command.
+
+<NewTopology />
+
+**v1 had no collateral — just a ±100 position limit that bots skipped entirely; v2 has one collateralized risk authority.** This is the one place the rewrite made a real *product* decision, not just an engineering one, so I want to flag it as a decision rather than an obvious win. v1's only pre-trade risk gate was a hardcoded ±100 contract position limit, and bots were exempt from it. v2 models risk the way a real exchange does: to hold a position you post collateral equal to your worst-case loss, and the engine reserves it before matching, settles against it on each fill, and releases it after — `reserve → match → settle → release`, with a per-market cap and a global budget, all enforced by one authority shared across every book. Real Kalshi is collateralized, so this is genuinely more faithful to the thing we were imitating. Whether it's the right call for a *party game* is a separate question I'll come back to at the end, because it changes how the game feels to play.
+
+**And the whole thing is built to be extended without touching the hot path.** The instrument-specific logic lives behind four narrow traits — `Book`, `RiskModel`, `Settlement`, `Scoring` — so you could swap binary contracts for some other instrument without going near the sequencer, the rings, or the journal. The deletion test for whether that abstraction earns its keep: if I want to run a totally different kind of market next year, I write four trait impls and reuse everything else. That's a real seam, not a speculative one. All of it adds up to 16 `ob-*` library crates plus the server binary — enough that "it's a real system" isn't a claim I have to argue.
+
+## Proving it didn't break: a second engine, on purpose
+
+Here's the problem with a fast, clever order book: the cleverness is exactly what makes it hard to trust. An intrusive linked list threaded through an object-pool arena, with cached best-price cursors and O(1) relinking, has a lot of moving parts that a `SortedDict` doesn't — and every one is a place a subtle bug can hide and produce *almost* the right answer.
+
+So the way you trust a fast thing is to race it against a slow thing that's obviously right, on every input, forever.
+
+I wrote a second order book, `RefBook`, whose only design goal is being correct in a way you can verify by reading it. Resting orders live in a flat `Vec`. To find the best order to match against, it rescans the *entire book* every single time and picks the best-priced, earliest one — O(n) per operation, embarrassingly slow, and impossible to get subtly wrong. Crucially, `RefBook` shares *no code* with the production ladder beyond the domain contract they both implement. That's the point: if the two shared a matching helper, a bug in that helper would corrupt both books identically and the comparison would pass while both were wrong. By sharing nothing, a bug in the fast book shows up as a *divergence* from the slow one.
+
+The differential harness feeds an identical, randomly generated command stream to both books and, after *every single command*, asserts that the two produced the exact same event stream and that their resting-order snapshots match.
+
+<CodeCard file="differential.rs" lines="151–222">
+```rust
+let prod_ev = prod.apply(cmd.clone(), seq, ts, &mut prod_risk);
+let ref_ev  = refb.apply(cmd,         seq, ts, &mut ref_risk);
+prop_assert_eq!(prod_ev.as_slice(), ref_ev.as_slice(), "events diverged at step {}", i);
+prop_assert_eq!(prod.resting_snapshot(), refb.resting_snapshot(), "book diverged at step {}", i);
+```
+</CodeCard>
+
+<DifferentialHarness />
+
+It runs 600 generated cases, and the command generator is deliberately cruel: a tiny space of four users and eight client-order-ids, so that crossing trades and self-trade-prevention fire constantly instead of almost never, roughly six orders per cancel, every mix of limit/market and GTC/IOC/FOK. On top of the event-equality check, each step asserts a set of cross-cutting invariants directly on the production book: net positions sum to zero per market (every contract someone is long, someone else is short — conservation), reserved collateral is never negative, no position cap is breached, and the book is never crossed at rest (best bid strictly below best ask). A bug that keeps the event streams equal but corrupts an invariant still gets caught.
+
+Determinism gets the same treatment. Because the engine is a pure function of its sequenced input, and the journal is a write-ahead log of exactly that input and nothing else, replaying the journal has to reproduce the run bit-for-bit. The replay proptest checks this by stepping the original and the replayed stream in lockstep and asserting equality *after every command*, not just at the end — so a divergence gets caught mid-round while the books and wallets are still full, not after settlement has wiped them. There's one subtlety I had to get right: the arena's physical layout isn't canonical (two logically identical books can differ byte-for-byte in which arena slots hold which orders), so replay is verified against a *normalized* snapshot capturing only logical state — resting orders in price-time order, positions, wallets, scoreboard — built from ordered `BTreeMap`s so the comparison itself is deterministic.
+
+And the ring — the one piece of genuinely subtle concurrent code — is model-checked. Under `loom`, the acquire/release protocol between producer and consumer is checked across *all* possible thread interleavings on a tiny two-slot ring with three items, asserting the consumer sees exactly `[0, 1, 2]` with no loss and no reordering. `loom`'s state space explodes combinatorially, which is why the model is kept microscopic; a separate one-million-item real-thread stress test across several capacities is the probabilistic complement that catches what a tiny model can't reach.
+
+<Callout type="lesson" title="To trust a clever data structure, diff it against a dumb one on every input">
+The production book is fast because it's clever; the reference book is trustworthy because it's stupid. Running both on the same random stream and asserting equality after every command turns "is my intrusive-linked-list arena correct?" — a question I can't answer by staring at it — into "do these two disagree?", which a proptest answers in seconds. The reference book being slow is a feature: it shares no cleverness, so it shares no bugs.
+</Callout>
+
+The receipt is 517 of 517 tests passing under `cargo test --workspace --all-features`, with no pinned proptest regressions — the 600-case differential, the replay determinism check, the ring model, and the rest, all green. Set that against v1, where the cross-process money path was simply untested, and you have the concrete face of "more correct, not less": the fast engine is checked event-for-event against an independent oracle on every input, and the old one took it on faith.
+
+## How fast, and what actually binds it
+
+The numbers, stated flat: **20,000 orders a second sustained for 25 seconds, in-system p50 of 2 microseconds and p99 of 66 microseconds, an engine loop averaging about 1.4 microseconds per iteration, and zero messages lost.** Pinning the rig, because these numbers are meaningless without it: two AWS `c7a.2xlarge` boxes (8 vCPU, 16 GiB each), a single market, a roster of 250 WebSocket clients. In-system latency is measured on the engine's own clock as `emit_ts − ingress_ts`, so it's immune to clock skew between machines.
+
+Every one of those numbers ties back to a mechanism from the design section. The p99 of 66 microseconds is low *because* there are no locks on the hot path — the engine thread never blocks on a mutex, never yields to a scheduler, it just spins and processes. The 20k/s is sustained with zero loss *because* the single writer plus the lock-free ring means there's no coordination overhead to pay per command, and the tee'd journal means durability never enters the critical path.
+
+But here's the finding I actually care about, and it's not the throughput number. **The engine was never the bottleneck.** At every offered rate I tested — up to 150,000 orders a second offered — the depth of the inbound ring stayed at zero. The engine drained its inbound queue as fast as ingress could fill it; it never fell behind. Even when the whole system was collapsing at 50k+ offered, the engine kept chewing through roughly 37,000 commands a second without complaint. What falls over is *egress*: delivering results to 250 WebSocket clients from a single load box. Each client has a reliable delivery lane capped at 1,000 in-flight messages, and past roughly 25k/s those lanes overflow and every one of the 250 clients gets evicted at once. The wall is the read side of the test rig, not the engine.
+
+| offered/s | achieved/s | in-sys p99 | evictions |
+|---:|---:|---:|---:|
+| 2,000 | 1,793 | 16 µs | 0 |
+| 10,000 | 8,975 | 16 µs | 0 |
+| 25,000 | 22,455 | 2.1 ms | 0 |
+| 50,000 | 29,567 | 4.2 ms | **250** |
+| 150,000 | 28,572 | 2.1 ms | **250** |
+
+The ladder reads cleanly if you know what you're looking at: microsecond latency and zero evictions through about 10k/s, a knee between 10k and 25k where latency crosses from microseconds into low milliseconds, and then a cliff at 50k+ where all 250 clients evict simultaneously — while the engine, again, is still fine. This is a *system* ceiling imposed by egress and the single load box, and I want to be precise that it is not an engine ceiling.
+
+Which brings me to the honesty centerpiece. The design spec targets **at least 50,000 orders a second on a single engine core**, and **I have not proven that number** — the egress/load-box limit binds first, so the one run I have can't see the engine's true ceiling *(target — not yet measured).* There's a multi-box load generator built specifically to fix this — a coordinator and worker processes that drive disjoint ranges of competitors from separate machines and merge their latency histograms exactly — precisely so the read side stops being the constraint and the engine's real ceiling becomes visible. **That run hasn't been recorded yet.** One more trap I'll name so nobody else falls in it: the harness has a built-in `sweep` mode that reported 124,000 acked/s, and that number is *garbage* — a dedup-cache artifact where repeated client-order-ids after the first step were answered from cache without ever reaching the engine. I don't cite it and neither should you; the restart-per-rate ladder above is the trustworthy view.
+
+<ThroughputWall />
+
+So how much of the "60× over Python" is real? The defensible comparison is v1's *measured* saturation (150–286 accepted orders a second, first-hand) against v2's *measured* sustained rate (20,000, first-hand). That gap is real and it's roughly 70–130×. What I won't claim is a clean apples-to-apples: the two ran on different hardware, and any projection of what the *optimized* v1 could have done is exactly that — a projection, not a measurement. The number I'll stand behind is "the old one fell over in the low hundreds and the new one doesn't at 20k," and I'll label everything past that honestly.
+
+The last loop to close is the *why* behind each design choice, quantified — and this is future work I'm naming as future work. The design section made qualitative claims: the lock-free ring beats a mutex-guarded book, the array ladder beats a `BTreeMap`, batched group-commit beats per-command commit. Each of those deserves an ablation — a deliberately regressed branch and the same load profile — to put a real delta on it. I have the branches planned and none of the numbers yet, so every one of those is **(benchmark pending)** until the harness runs.
+
+<Callout type="lesson" title="The engine was never the bottleneck — and saying so honestly means admitting I haven't measured the ceiling">
+The most interesting result is a negative one: at every rate up to 150k offered, the inbound ring depth was zero — the engine kept up effortlessly and something else always broke first. That's a genuinely good sign for the design. It also means the headline number, 20k/s, is a property of my *test rig's egress path*, not the engine, and the engine's actual ceiling is a number I don't have yet. Both of those are true at once, and reporting only the flattering half would be the easiest lie in this whole post.
+</Callout>
+
+## Competition day, and what I'd measure next
+
+The original ran the actual event. 150 traders, real money, four live races, standings on the projector — and it held together, on a deploy path held up by a watchdog script and an SSH tunnel that I would not describe as robust. That's worth saying plainly, because the rewrite is not a dunk on the thing that shipped. Shipping a working exchange for a room of 150 people on a five-week student deadline is the reason there was anything to rewrite. The v2 story only exists because v1 ran the race first.
+
+The one design decision I genuinely haven't closed is the risk model. v2's collateralized worst-case-loss model is more faithful to how a real prediction market works — you post what you could lose, you can't take a position you can't cover. But the competition ran on v1's model: a flat ±100 position limit, no collateral, bots exempt. And that difference changes how the game *feels*. Under a position limit, a new player can walk up and immediately take a swing to the cap without thinking about margin; under collateral, they have to understand reserve-and-settle before they can do anything, which is more correct and less fun at a party. I don't think collateral is the unambiguous right answer for a Mario Kart betting game, even though it's the right answer for an exchange. The most honest resolution is probably to build the position-limit model as a selectable `RiskModel` alongside the collateral one — the trait seam is already there for it — and let whoever runs the next event choose. I've left it open on purpose.
+
+Here's the ledger of what's actually proven versus not, because the whole point of this post is not to let the impressive half hide the unmeasured half:
+
+| Dimension | v1 (Python / Redis) | v2 (Rust) |
+|---|---|---|
+| Topology | 3 units over a Redis bus, CQRS | 1 process, 1 machine, lock-free rings |
+| Order book | `SortedDict` → 99-slot bucket array | flat array ladder + arena, O(1) hot path |
+| Concurrency | 4 async actors/market, shared state | single writer, SPSC rings, busy-spin |
+| Durability | none mid-round (heap is truth) | tee'd WAL, replay verified every command |
+| Correctness | cross-process money path untested | 517/517, 600-case differential + replay |
+| Risk model | ±100 position limit, bots exempt | collateralized worst-case loss |
+| Measured perf | saturates ~150–286 RPS, p99 28–78 s | 20k/s sustained, p99 66 µs, 0 loss |
+| Engine ceiling | — | ≥50k/s target, *not yet measured* |
+
+Proven: 20k/s sustained with zero loss, 517/517 tests including the differential and replay determinism checks, and the finding that the engine never bottlenecked. Not yet proven: the ≥50k/s single-core ceiling, which needs the multi-box run, and every ablation delta, which needs the regressed branches. Those aren't done — they're the next experiments, and I'd rather list them as open than let them read as finished.
+
+If there's one thing this whole rewrite argues, it's that the speed didn't come from Rust being faster than Python. It came from a shape where correctness and speed turned out to be the *same* discipline: a single writer that's both race-free and lock-free, one sequencing point that's both fair and cheap, a journal that's durable precisely because it never touches the hot path, and an oracle that proves correctness on every command the engine will ever be fast enough to process. Going fast *was* going correct. The code will be public — clone it, run the same harness, and you'll get the same plots. And when the multi-box run finally tells me where the engine actually tops out, that's the next post.

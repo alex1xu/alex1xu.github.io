@@ -1,0 +1,54 @@
+---
+// The perf payoff, v2 analog of ThroughputLadder. Horizontal bars in orders/second:
+//   v1 measured saturation (~150–286, muted)
+//   v2 measured sustained (20,000, terracotta = mine, solid)
+//   v2 SPEC target (≥50,000, sage, DASHED outline) — a target, NOT a measurement.
+// The honesty is visual: the projected bar is dashed and distinct from the solid measured bars.
+const scaleMax = 55000;
+const data = [
+  { label: 'v1 saturation', value: 286, kind: 'old', note: 'measured · ~150–286/s', measured: true },
+  { label: 'v2 sustained', value: 20000, kind: 'mine', note: 'measured', measured: true },
+  { label: 'v2 SPEC target', value: 50000, kind: 'target', note: 'target · not yet measured', measured: false, prefix: '≥' },
+];
+const W = 640, rowH = 48, top = 18, labelW = 148, barMax = 396;
+const H = top + data.length * rowH + 24;
+const x = (v) => (v / scaleMax) * barMax;
+const solidFill = { old: 'var(--muted)', mine: 'var(--accent)' };
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Throughput in orders per second. v1 saturated at a measured 150 to 286 per second. v2 sustains a measured 20,000 per second. The v2 SPEC target of at least 50,000 per second is a target, not yet measured, drawn as a dashed outline to distinguish it from the two solid measured bars.">
+    {data.map((d, i) => {
+      const y = top + i * rowH;
+      const bw = Math.max(x(d.value), 2);
+      const solid = d.measured;
+      const stroke = d.kind === 'target' ? 'var(--done)' : 'none';
+      return (
+        <g>
+          <text x={labelW - 12} y={y + 15} text-anchor="end" class="lbl">{d.label}</text>
+          <text x={labelW - 12} y={y + 30} text-anchor="end" class="sub">{d.note}</text>
+          <rect x={labelW} y={y + 2} width={bw} height={rowH - 20} rx="2"
+            fill={solid ? solidFill[d.kind] : 'none'}
+            stroke={solid ? 'none' : stroke}
+            stroke-width={solid ? 0 : 1.8}
+            stroke-dasharray={solid ? '0' : '6 4'} />
+          <text x={labelW + bw + 8} y={y + 15} class="val">{(d.prefix ?? '') + d.value.toLocaleString()}/s</text>
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>Measured against measured, then the bar I have <em>not</em> earned yet: v1 saturated at 150–286 orders/s and v2 sustains a measured 20,000 orders/s. The ≥50,000 orders/s bar is the SPEC target — drawn dashed because it is a goal, not a measurement.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.sub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.val) { font-size: 13px; fill: var(--muted); font-family: var(--font-mono); }
+</style>

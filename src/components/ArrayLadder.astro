@@ -1,0 +1,82 @@
+---
+// The price ladder as a bounded array (1–99¢). Each cent is an index into an array of FIFO
+// queues of resting orders. The best-price cursor (terracotta) does a bounded backward scan.
+// Show a representative window of the 99 slots with a few populated.
+const slots = [
+  { cent: 1, orders: 0 },
+  { cent: 2, orders: 0 },
+  { cent: 3, orders: 2 },
+  { cent: 4, orders: 3 },
+  { cent: 5, orders: 1 },
+  { cent: 6, orders: 0 },
+  { cent: 7, orders: 0 },
+  { cent: 8, orders: 0 },
+];
+const best = 5; // best price = highest populated cent in this window
+const W = 640, colW = 74, x0 = 40, top = 58, cellH = 22, gap = 4, maxQ = 3;
+const H = top + maxQ * (cellH + gap) + 74;
+const cx = (i) => x0 + i * colW;
+const slotW = colW - 12;
+const bestIdx = slots.findIndex((s) => s.cent === best);
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="The price ladder as an array: each cent from 1 to 99 is an array index holding a FIFO queue of resting orders. Access to any level is O(1) by index; the best-price cursor sits at the highest populated cent and scans backward a bounded number of slots. Shown: cents 1 through 8, with orders resting at 3¢, 4¢, and 5¢, best price at 5¢.">
+    <text x={x0 - 8} y={top - 24} text-anchor="start" class="axttl">price[cent] → FIFO queue of resting orders</text>
+
+    {/* best-price cursor */}
+    <g>
+      <line x1={cx(bestIdx) + slotW / 2} y1={top - 16} x2={cx(bestIdx) + slotW / 2} y2={top - 4} stroke="var(--accent)" stroke-width="1.5" />
+      <text x={cx(bestIdx) + slotW / 2} y={top - 20} text-anchor="middle" class="cursor">best ↓</text>
+    </g>
+    {/* bounded backward scan arrow: from a higher empty slot down toward best */}
+    <line x1={cx(bestIdx + 2) + slotW / 2} y1={top - 10} x2={cx(bestIdx) + slotW / 2 + 6} y2={top - 10} stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#al-arr)" />
+    <text x={cx(bestIdx + 1) + slotW / 2 + 8} y={top - 14} text-anchor="middle" class="scan">bounded backward scan</text>
+
+    <defs>
+      <marker id="al-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--accent)" /></marker>
+    </defs>
+
+    {slots.map((s, i) => {
+      const isBest = s.cent === best;
+      return (
+        <g>
+          {/* index axis label */}
+          <text x={cx(i) + slotW / 2} y={top + maxQ * (cellH + gap) + 18} text-anchor="middle" class={`cent${isBest ? ' best' : ''}`}>{s.cent}¢</text>
+          {/* the slot column (queue cells, drawn bottom-up = FIFO front at bottom) */}
+          {Array.from({ length: maxQ }).map((_, r) => {
+            const filled = r < s.orders;
+            const y = top + (maxQ - 1 - r) * (cellH + gap);
+            return (
+              <rect x={cx(i)} y={y} width={slotW} height={cellH} rx="3"
+                fill={filled ? (isBest ? 'var(--accent)' : 'var(--bg-soft)') : 'transparent'}
+                stroke={filled ? (isBest ? 'var(--accent)' : 'var(--border)') : 'var(--border)'}
+                stroke-width="1"
+                stroke-dasharray={filled ? '0' : '2 2'}
+                opacity={filled ? 1 : 0.4} />
+            );
+          })}
+        </g>
+      );
+    })}
+
+    <text x={x0 - 8} y={top + maxQ * (cellH + gap) + 42} text-anchor="start" class="axttl dim">O(1) index access · … slots continue to 99¢</text>
+  </svg>
+  <figcaption>Bounded 1–99¢ price space → a level is just an array index; no comparison tree needed. The best-price cursor moves by a short bounded backward scan, not a log-time lookup.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.cent) { font-size: 12px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.cent.best) { fill: var(--accent); font-weight: 600; }
+  .chart :global(.axttl) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.axttl.dim) { font-size: 10.5px; }
+  .chart :global(.cursor) { font-size: 11px; fill: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+  .chart :global(.scan) { font-size: 10px; fill: var(--accent); font-family: var(--font-mono); }
+</style>
