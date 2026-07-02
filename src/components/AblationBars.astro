@@ -1,0 +1,65 @@
+---
+// The ablation payoff (§8): what each v2 design choice is worth, measured by
+// regressing exactly one thing and replaying an identical command stream.
+// Bars are the THROUGHPUT slowdown factor when the choice is removed — the
+// precise signal (latency is power-of-two bucketed, so it's not plotted here).
+// Allocation dominates: no-hot-path-allocation is the point of the whole chart.
+const data = [
+  { label: 'no hot-path allocation', factor: 5.3, kind: 'primary',
+    note: 'pooled arena vs per-level heap · shape held at BTreeMap', dominant: true },
+  { label: 'group-commit journal', factor: 63.5, kind: 'primary',
+    note: 'batch-of-64 vs per-command fsync · on real disk' },
+  { label: 'array-indexed ladder', factor: 1.12, kind: 'secondary',
+    note: 'flat array vs BTreeMap · allocation held at arena' },
+];
+// log scale so 1.12× and 63.5× coexist legibly and the dominance still reads.
+const minF = 1, maxF = 70;
+const lx = (f) => (Math.log(f) - Math.log(minF)) / (Math.log(maxF) - Math.log(minF));
+const W = 640, rowH = 52, top = 20, labelW = 176, barMax = 380;
+const H = top + data.length * rowH + 30;
+const x = (f) => Math.max(lx(f) * barMax, 3);
+const fill = { primary: 'var(--accent)', secondary: 'var(--muted)' };
+const ticks = [1, 2, 5, 10, 20, 50];
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Throughput slowdown factor when each v2 design choice is regressed, one variable at a time. Removing the pooled arena (no hot-path allocation) costs 5.3 times throughput. Per-command fsync instead of group-commit costs 63.5 times. The flat array ladder versus a BTreeMap is only 1.12 times. Allocation and journal batching dominate; the array shape is a small secondary win.">
+    <line x1={labelW} y1={top - 6} x2={labelW} y2={top + data.length * rowH} stroke="var(--border)" />
+    {ticks.map((t) => {
+      const tx = labelW + lx(t) * barMax;
+      return (
+        <g>
+          <line x1={tx} y1={top - 6} x2={tx} y2={top + data.length * rowH} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+          <text x={tx} y={top + data.length * rowH + 16} text-anchor="middle" class="ax">{t}×</text>
+        </g>
+      );
+    })}
+    {data.map((d, i) => {
+      const y = top + i * rowH;
+      const bw = x(d.factor);
+      return (
+        <g>
+          <text x={labelW - 12} y={y + 17} text-anchor="end" class="lbl">{d.label}</text>
+          <text x={labelW - 12} y={y + 32} text-anchor="end" class="sub">{d.note}</text>
+          <rect x={labelW} y={y + 3} width={bw} height={rowH - 22} rx="2" fill={fill[d.kind]} />
+          <text x={labelW + bw + 8} y={y + 18} class="val">×{d.factor}</text>
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>What each design choice is worth, measured by undoing exactly one and replaying the same 5M-command stream (all cells returned a byte-identical 2,706,139 fills). Bars are the <em>throughput</em> slowdown when the choice is removed, on a log axis — the precise signal. The array shape everyone diagrams is worth ×1.12; not allocating on the hot path is worth ×5.3. The famous trick is the small lever.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.sub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.val) { font-size: 13px; fill: var(--fg); font-family: var(--font-mono); }
+  .chart :global(.ax)  { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+</style>
