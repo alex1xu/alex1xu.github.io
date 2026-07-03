@@ -73,7 +73,7 @@ const engY = 96, engH = 52;
     <text x={rightX + colW / 2} y={engY + engH + 53} text-anchor="middle" class="btask">journal (WAL) · durable in intent</text>
     <text x={rightX + colW / 2} y={engY + engH + 88} text-anchor="middle" class="ptag acc">lock-free rings · deterministic · 1 unit</text>
   </svg>
-  <figcaption>What v1 and v2 actually are, as shapes. v1 is three units — a FastAPI backend, a Python asyncio engine, and Postgres — coordinating over a Redis bus that carries both commands and fanout, so it is async and eventually consistent. v2 collapses that into one process with a single writer thread reached over lock-free rings, which is what makes it deterministic.</figcaption>
+  <figcaption>What v1 and v2 actually are, as shapes. v1 is several separate processes — a FastAPI backend, a Python asyncio engine, Postgres — coordinating over a Redis bus that carries both commands and fanout, so it is async and eventually consistent. v2 collapses that into one process with a single writer thread reached over lock-free rings, which is what makes it deterministic.</figcaption>
 </figure>
 
 <style>
