@@ -8,7 +8,7 @@
 // real `ps -T` sample; see clean2_threads.txt.
 const threads = [
   { label: 'engine (busy-spin match core)', cpu: 101, kind: 'engine', note: 'expected — spins by design' },
-  { label: 'projection (drain ring → route to 250 lanes)', cpu: 100, kind: 'wall', note: 'the wall: one thread, serial' },
+  { label: 'projection · route to 250 lanes', cpu: 100, kind: 'wall', note: 'the wall: one thread, serial' },
   { label: 'egress task worker', cpu: 23, kind: 'idle' },
   { label: 'egress task worker', cpu: 19, kind: 'idle' },
   { label: 'egress task worker', cpu: 19, kind: 'idle' },

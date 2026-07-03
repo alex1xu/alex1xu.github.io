@@ -123,7 +123,7 @@ So the brief I wrote for the rewrite wasn't "make it fast." It was "make it fast
 
 ## Version two: one thread, no locks, one source of truth
 
-The cleanest way to present the v2 design is as a list of answers, because each major decision is a direct response to a specific v1 failure.
+Every major v2 decision answers a specific v1 failure, so I'll walk them that way.
 
 <V1V2SideBySide />
 
@@ -140,8 +140,6 @@ The cleanest way to present the v2 design is as a list of answers, because each 
 **v1 had no mid-round durability; v2 journals before the engine ever sees a command.** Ingress sequences each command, then hands it to the journal *before* pushing it onto the engine's inbound ring. The ordering is deliberate: nothing reaches the engine that isn't already queued for durability, so the write-ahead log can never be missing a command the engine acted on. `fsync` is batched via group-commit — one flush per batch of 64, not one per command, on the journal's own thread, off the engine's hot path; when traffic goes quiet a 5 ms idle timer flushes whatever partial batch is waiting, so durability lag stays bounded even at a trickle. That batching isn't a small optimization: on a real disk it's the difference between roughly 500 and 32,000 commands a second, which I measure later.
 
 That buys ordering, not durability-on-ack — the stronger thing it's easy to misread it as. A command is durable *in intent* — in the journal channel — before the engine matches it, but the actual disk `fsync` lands with the next group-commit up to a few milliseconds later. So the v2 acknowledgment is bounded-and-ordered durability, not "on disk the instant you're acked." It's the same *class* of tradeoff v1 had, except here the lag is bounded and the engine's input is journaled-in-intent first — which is the exact property that lets replay reconstruct a round.
-
-<NewTopology />
 
 **v1 had no collateral, just a ±100 position limit that bots skipped; v2 has one collateralized risk authority.** This is the one place the rewrite made a real *product* decision, not just an engineering one. v2 models risk the way a real exchange does: to hold a position you post collateral equal to your worst-case loss, and one shared authority reserves it at order entry — before the order can match, so a resting limit can never cross into a position its owner can't cover — settles against it on each fill, and releases it after. `reserve → match → settle → release`, with a per-market cap and a global budget. Real Kalshi is collateralized, so this is more faithful to the thing I was imitating. Whether it's the right call for a *party game* is a separate question I come back to at the end, because it changes how the game feels to play.
 
@@ -189,6 +187,8 @@ The throughput number bored me. What I chased was *where the bottleneck sat* —
 So I ran the matching loop in-process, feeding it commands directly with no network and no egress, thread-pinned to one core. In isolation the engine processes a command in **p50 2.05 µs** (mean 1.27–1.42 µs across seeds) and sustains **630,000–690,000 commands a second**. That's the same ~2 µs scale as the wire run's engine clock — which means the 20k I measured on the wire was not the engine giving out. The engine was idling at a fraction of its capacity while something downstream throttled it. That used to be an inference from ring-depth telemetry; now it's a direct measurement. (A separate, narrower micro-bench that exercises only the book's insert/match/cancel path, with no risk or journal, runs faster still — that's the 2.2M/s in the ablation table below. Different harness, different question; the 630–690k figure is the whole-engine-minus-the-wire number.)
 
 The wire telemetry agrees. At every rate I drove the rig — nominally up to 150,000 orders a second — the inbound ring depth stayed at zero. The engine only ever *saw* about 26,000 commands a second (orders plus cancels), because past the saturation knee its slow clients get evicted and stop submitting — the egress wall throttles the engine's own input from downstream. But of everything it was handed, it never fell behind: inbound depth zero at every rate. Between the in-process 630k+ and the wire ring-depth pinned at zero, both measurements say the same thing: nothing on the ingress-to-match path was the wall.
+
+<NewTopology />
 
 The wall is on the output side, and I want to be exact about where, because I got this wrong in an earlier draft of my own mental model. The engine publishes each event into an outbound ring; a projection task drains that ring and fans every event out to the 250 per-client delivery lanes. Each reliable lane is capped, and when a client can't keep up, its lane fills — and rather than silently drop a message, the projection *evicts* that client. Past the knee, every one of the 250 clients overflows its lane and gets evicted at once. Here's the part that corrected me: I'd assumed the engine would end up spinning on a full *outbound ring*, waiting for the projection to drain it. It never does. Across the whole ladder, the engine's `outbound_full` counter stayed at **zero** while evictions hit **250**. The projection drains the ring faster than the engine fills it; the backup is entirely further downstream, at the per-client lanes. The engine that "never blocks" genuinely never blocked — not even on egress.
 
@@ -244,8 +244,6 @@ Dropping the arena — those bottom two rows, book shape fixed — cost **×5.3 
 
 Then I checked the famous trick, the array-vs-tree shape, with allocation held constant — the top two rows. The flat array bought **×1.12 throughput and identical p50/p99**. Real, worth keeping, and a small fraction of the allocation win: a 5.3× lever against a 1.12× one. The shape is the part I was proud of on the old exchange, the part worth a diagram. The measurement says the arena underneath it was doing most of the work.
 
-<AblationBars />
-
 One caveat on reading the latency columns: these histograms use power-of-two buckets (512 / 1,024 / 2,048 / 131,072 ns are exactly 2⁹ / 2¹⁰ / 2¹¹ / 2¹⁷), so p50 and p99 land on bucket edges and the clean ×2 and ×64 latency ratios are coarse — bucket-resolution artifacts, not precise measurements. Throughput is the precise signal; latency is bucketed.
 
 Then the journal, on a real xfs disk. (The first time I ran this it landed in `/tmp`, which was tmpfs — RAM — so `fsync` was a no-op and the result was meaningless. Only the real-disk number is worth citing, which cost me a re-run to notice.)
@@ -256,6 +254,8 @@ Then the journal, on a real xfs disk. (The first time I ran this it landed in `/
 | per-command `fsync` | 508/s | 2.10 ms |
 
 Group-commit is **×63.5**. Per-command durability means a real 2.10 ms disk `fsync` on the path of every single order; batching amortizes it to nothing. That's the concrete cost behind "durability off the hot path" — not a figure of speech, but 2 ms per order if you get it wrong.
+
+<AblationBars />
 
 One thing I *didn't* measure: I never isolated the lock-free ring against a mutex-guarded book as a throughput ablation. The single-writer ring design earns its place a different way — the inbound-ring depth staying at zero under load, plus the `loom` model check — not a regressed branch. So the measured trio is allocation, shape, and journal; the ring stands on correctness evidence, not a speed delta.
 
