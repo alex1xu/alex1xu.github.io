@@ -1,0 +1,64 @@
+---
+// Per-thread CPU on the engine box under a saturating 60k offered, sampled at steady
+// state with no profiler attached (the clean run — perf's own overhead moved the
+// overflow point, so this is the un-perturbed picture). The story: two threads pegged
+// — the engine busy-spin core (expected) and ONE projection thread doing all the
+// ring-drain-and-route — while the six per-client egress tasks sit idle-to-half. The
+// wall is the single serial routing thread, not the socket writes. Numbers are the
+// real `ps -T` sample; see clean2_threads.txt.
+const threads = [
+  { label: 'engine (busy-spin match core)', cpu: 101, kind: 'engine', note: 'expected — spins by design' },
+  { label: 'projection (drain ring → route to 250 lanes)', cpu: 100, kind: 'wall', note: 'the wall: one thread, serial' },
+  { label: 'egress task worker', cpu: 23, kind: 'idle' },
+  { label: 'egress task worker', cpu: 19, kind: 'idle' },
+  { label: 'egress task worker', cpu: 19, kind: 'idle' },
+  { label: 'egress task worker', cpu: 0, kind: 'idle' },
+  { label: 'egress task worker', cpu: 0, kind: 'idle' },
+  { label: 'egress task worker', cpu: 0, kind: 'idle', note: 'serialize + socket write live here — not saturated' },
+];
+const W = 640, rowH = 30, top = 16, labelW = 250, barMax = 300;
+const H = top + threads.length * rowH + 40;
+const x = (c) => (Math.min(c, 100) / 100) * barMax;
+const fill = { engine: 'var(--muted)', wall: 'var(--accent)', idle: 'var(--border)' };
+const ticks = [0, 25, 50, 75, 100];
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Per-thread CPU on the engine box under saturating load. Two threads are pegged near 100%: the engine busy-spin matching core (expected) and a single projection thread that drains the outbound ring and routes each event to one of 250 per-client lanes. The six per-client egress task workers — which do the JSON serialization and socket writes — sit between 0 and 23%. The bottleneck is the single serial projection thread, not the fan-out socket writes.">
+    {ticks.map((t) => {
+      const tx = labelW + (t / 100) * barMax;
+      return (
+        <g>
+          <line x1={tx} y1={top - 4} x2={tx} y2={top + threads.length * rowH} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+          <text x={tx} y={top + threads.length * rowH + 16} text-anchor="middle" class="ax">{t}%</text>
+        </g>
+      );
+    })}
+    {threads.map((d, i) => {
+      const y = top + i * rowH;
+      const bw = x(d.cpu);
+      return (
+        <g>
+          <text x={labelW - 10} y={y + rowH / 2 + 1} text-anchor="end" class={d.kind === 'wall' ? 'lbl lbl-wall' : 'lbl'}>{d.label}</text>
+          <rect x={labelW} y={y + 4} width={Math.max(bw, 2)} height={rowH - 12} rx="2" fill={fill[d.kind]} />
+          <text x={labelW + Math.max(bw, 2) + 8} y={y + rowH / 2 + 1} class="val">{d.cpu}%</text>
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>Per-thread CPU on the engine box at 60k offered, sampled clean (no profiler attached). Two threads peg: the engine's busy-spin match core, which spins by design, and <em>one</em> projection thread draining the outbound ring and routing every event to the right one of 250 client lanes. The six workers that actually serialize JSON and write sockets sit idle-to-half — so the wall is the single serial routing thread, and sharding it is the next lever. Confirmed identical across three runs.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.lbl) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.lbl-wall) { font-weight: 600; }
+  .chart :global(.val) { font-size: 12px; fill: var(--fg); font-family: var(--font-mono); }
+  .chart :global(.ax)  { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+</style>
