@@ -1,7 +1,7 @@
 ---
-title: "The exchange that saturated, and the one that didn't"
+title: "Mario Markets: rebuilding a trading exchange for speed and correctness"
 date: "2026-07-03"
-description: "I built a Mario Kart prediction market in Python for a live competition; it fell over in the low hundreds of orders a second. I rebuilt it from scratch in Rust, and when I put the rewrite on a scale, the biggest speed lever wasn't the clever order book everyone reaches for — it was never allocating on the hot path."
+description: "We ran a Mario Kart prediction market for 150 traders at a Berkeley competition; the Python exchange worked but lagged under load. I rebuilt it from scratch, and when I measured where the speedup came from, the biggest lever wasn't the clever order book everyone diagrams — it was not allocating on the hot path."
 tags: ["rust", "systems", "trading", "orderbook", "performance", "lock-free"]
 ---
 
@@ -18,53 +18,52 @@ import V1V2SideBySide from '../../components/V1V2SideBySide.astro';
 import HotPath from '../../components/HotPath.astro';
 import EgressProfile from '../../components/EgressProfile.astro';
 
-Last winter, about 150 college students spent an afternoon trading binary contracts on prerecorded Mario Kart races while the standings updated on a projector at the front of the room. Real money, a live commentator calling the races, four markets open at once. I built the Python exchange behind it with a small student team on a five-week deadline, and I owned the matching engine and the performance work. It ran the event. Then, under load, it fell over — and I spent the months after rebuilding the whole thing from scratch in Rust, alone, to find out how much of that was Python's fault and how much was mine.
+This spring, about 150 college students spent a weekend playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of during my time at UC Berkeley. I was head of game development this year, and I led a new game called Mario Markets: competitors traded binary contracts on prerecorded Mario Kart races shown on a projector at the front of the room, each racer a separate market, all from their laptops. A few of us built the exchange and engine behind it over the months leading up to the event.
 
-<Callout type="lesson" title="Short version, for the skim">
-The Python exchange saturated somewhere south of **300 accepted orders a second**, with a p99 latency — the slow 1% of requests, the part users actually feel — that climbed into the tens of *seconds* under load. The Rust rewrite takes **20,000 orders a second** offered, acks about 18,000 of them at an engine-side p99 of **33 microseconds**, and has never dropped a reliable message.
+It was our first time building anything like this. I designed it for the event's load — about 150 people trading by hand, an estimated peak of maybe ten orders a second each — and under that load it worked, but not well. At the loudest moments of a race the latency got bad for some players: they'd fire an order and wait seconds to see it go through, or watch the board lag behind the action. It held the room, but "held the room" was hiding a lot. So I spent the months after rebuilding the whole thing from scratch — for the lessons, for an exchange with no lag next time, and for one I could extend with automated trading bots and a new game mode each year without redesigning the engine.
 
-That's a 60–70× gap, and it's the least interesting number here. Two things I didn't expect going in:
+<Callout type="lesson" title="TL;DR">
+The Python exchange (the first version, used at the competition) saturated somewhere south of **300 accepted orders a second**, and past that its submit-to-fill latency was pure *queueing delay* — orders piled up in a backlog and p99 climbed into the tens of seconds. The rewrite takes **20,000 orders a second** offered and acks about **18,000** of them at an engine-side p99 of **33 microseconds** — engine-side meaning ingress-to-emit on one clock, not the full round trip to a browser — while never dropping a message on a client's reliable lane.
 
-- **Almost none of the speedup came from "Rust is faster than Python."** When I broke each of v2's design choices on purpose and re-measured, the dominant lever was **not allocating on the hot path** — not asking the OS for memory in the middle of matching an order (×5.3 throughput, ×64 tail latency). The clever array-shaped order book everyone diagrams? Worth ×1.12. (An order book is the exchange's live list of resting buy and sell orders; more on it below.)
-- **The rewrite had to get *more* correct, not less, to go fast.** The old system's matching core was fine the whole time. Everything that broke — lost orders, a double-settlement risk, race conditions — lived in the distributed plumbing wrapped around it. Speed and correctness turned out to be the same discipline, not a tradeoff.
+That's a 60–70× gap. A few things I didn't expect going in:
 
-And a load-testing lesson that cost me a week: **a load test can lie to you about which side is slow.** Mine did, twice — and later, so did my *profiler*.
+- **Almost none of the speedup came from "Rust is faster than Python."** I benchmarked each of v2's design choices by breaking it on purpose and re-measuring. The dominant lever was **not allocating on the hot path** — not asking the OS for memory while matching an order — worth ×5.3 throughput and ×64 tail latency. The clever array-shaped order book everyone diagrams was worth ×1.12; batching the durability writes (group-commit) was worth ×63.5 on real disk. (An order book is the exchange's live list of resting buy and sell orders; more below.)
+- **The rewrite had to get *more* correct, not less, to go fast.** The old system's matching core was fine the whole time. Everything that broke — lost orders, a double-settlement risk, race conditions — lived in the distributed plumbing wrapped around it. Going fast and staying correct pulled in the *same* direction here, not opposite ones, and most of this post is why.
+- **A load test can lie to you about which side is slow.** Mine did, several times, and chasing the wrong ceiling cost me weeks. Later my *profiler* lied too, for a different reason.
 </Callout>
 
-## The game, and why it needed a real exchange
+## Context: Mario Markets
 
-The instrument is a Kalshi-style binary prediction market: one market per racer, asking "does this racer win?" You trade YES or NO contracts priced in integer cents on a 1–99 ladder, a YES and a NO always sum to 100¢, and at the end of the race the market settles to 0 or 100 depending on who won. Buy YES at 40¢, your racer wins, you're paid 100. Simple to state.
+The instrument is a Kalshi-style binary prediction market: one market per racer, asking "does this racer win?" You trade YES or NO contracts priced in integer cents on a 1–99 ladder, a YES and a NO always sum to 100¢, and at the end of the race the market settles to 0 or 100 depending on who won. Buy YES at 40¢, your racer wins, you're paid 100.
 
-Underneath, it's a real exchange. Every market is a continuous limit order book with price-time priority: limit and market orders, partial fills, cancels, resting liquidity, a matching engine deciding who trades with whom and at what price. On top sit wallets, per-market P&L, and a cumulative leaderboard. Four races run at once, so four books are live simultaneously and 150 people are hitting all of them.
+Underneath, every market is a continuous limit order book with price-time priority: limit and market orders, partial fills, cancels, resting liquidity, a matching engine deciding who trades with whom and at what price. On top sit wallets, per-market P&L, and a cumulative leaderboard. Races run one at a time, and each race tracks four racers with a market on each — so four books are live at once and 150 people are hitting all of them.
 
-That last detail is the one that turns throughput and latency from abstractions into something you can watch fail. Picture 150 laptops firing orders at the same four books while the standings tick over on the projector and someone's shouting about a blue shell. A few hundred milliseconds of lag is the difference between a fill and a miss, and everyone can see the board. The exchange doesn't get to be slow, and it *really* doesn't get to be wrong about who has what — not with money on the line and a room watching.
-
-It worked well enough to run the room. Then I spent the next few months finding out how much "well enough on the day" was hiding.
+That's the detail that turns throughput and latency from abstractions into something you watch fail in real time. Picture 150 laptops firing orders at the same four books the instant a blue shell knocks the leader out of first. A few hundred milliseconds of lag is the difference between a fill and a miss. The exchange doesn't get to be slow, and it *really* doesn't get to be wrong about who holds what.
 
 ## Version one: Python, Redis, and a board game underneath
 
-The repo didn't begin life as an exchange. I started it as a Snakes-and-Ladders board-game backend and grafted the exchange on top, which is why to this day the database tables carry a `calshi_` prefix — a fossil from the thing it used to be. It sets the tone: a system I assembled at speed out of what was already there.
+The repo didn't begin life as an exchange. It started as a Snakes-and-Ladders board-game backend, and we grafted the exchange on top — which is why to this day the database tables carry a `calshi_` prefix, a fossil from the thing it used to be. That sets the tone: a system built fast, on a deadline, out of what was already there.
 
 The topology was a React frontend, a FastAPI backend, a standalone Python asyncio matching engine, Redis doing double duty as both the command bus and the realtime fanout, and Postgres as the authoritative state.
 
 <OldTopology />
 
-I built it CQRS from the first commit, and aggressively async. `POST /orders` returned `202 Accepted` immediately — it did *not* persist or match the order. It dropped the command onto a Redis stream and returned. The engine consumed the stream, matched in memory, then persisted to Postgres and published fills over pub/sub; the browser learned what happened when a WebSocket message told it to invalidate its cache and refetch.
+We built it CQRS from the first commit, and aggressively async. `POST /orders` returned `202 Accepted` immediately — it did *not* persist or match the order. It dropped the command onto a Redis stream and returned. The engine consumed the stream, matched in memory, then persisted to Postgres and published fills over pub/sub; the browser learned what happened when a WebSocket message told it to invalidate its cache and refetch.
 
-That's a clean pattern on paper, and it has a consequence you feel immediately: the UI's view of your P&L always lags a refetch. "I placed an order but I don't see it yet" isn't a bug in that architecture, it's the architecture — I'd put the acknowledgment and the truth in different places, and they arrive at different times.
+That's a clean pattern on paper, and it has a consequence you feel immediately: the UI's view of your P&L always lags a refetch. "I placed an order but I don't see it yet" isn't a bug in that architecture, it's the architecture — the acknowledgment and the truth live in different places and arrive at different times.
 
-The matching *core* was fine — the whole surprise of the post-mortem hinges on it. One shared order book per market, a trade crosses when a YES bid and a NO bid sum to at least 100, FIFO price-time priority, fills at the resting order's price. I wrote that logic early and it stayed sound the entire time. The engine at the center was never really the problem. The blood was all in the plumbing I wrapped around it — the bus, the cache, the fanout, the places where two things had to agree and didn't.
+The matching *core* was fine — the whole surprise of the post-mortem hinges on it. One shared order book per market, a trade crosses when a YES bid and a NO bid sum to at least 100, FIFO price-time priority, fills at the resting order's price. That logic went in early and stayed sound the entire time. The engine at the center was never the problem. The trouble was all in the plumbing around it — the bus, the cache, the fanout, the places where two things had to agree and didn't.
 
-### Where v1 grew: six eras in five weeks
+### How v1 grew: six eras
 
-I didn't design v1 and then build it. It grew, and the shape of the growth is the story. Six rough eras, from the commit log:
+We didn't design v1 and then build it. It grew, and the shape of the growth is the story. Six rough eras, from the commit log:
 
 1. **A board game (late January).** Snakes and Ladders on a generic FastAPI "game" backend, with a market generator spinning binary markets off game state. The exchange core got grafted onto this chassis.
-2. **The race pivot, and first deploy.** I dropped the live game for prerecorded Mario Kart races and stood the whole thing up on EC2 behind nginx. The order book was still a `SortedDict`.
+2. **The race pivot, and first deploy.** We dropped the live game for prerecorded Mario Kart races and stood the whole thing up on EC2 behind nginx. The order book was still a `SortedDict`.
 3. **Optimize and add bots (mid-February).** Batch matching, a taking bot and a market-maker bot running inside the engine, `orjson`, smaller snapshots. This is where I started load-testing, and where the load-testing lie began.
-4. **The balance rewrite.** I tore out a fragile `available + reserved` wallet model and replaced it with a single realized-P&L number. There's a commit literally titled `"SLIGHT BROKEN; rework of balance logic"`, which is exactly as reassuring as it sounds.
-5. **The two-plane split.** The single biggest performance lever in v1's whole history: I made the engine run *purely in memory during a round* and bulk-persist only at the end, which killed the per-fill database write on the hot path. In the same era I split the one FastAPI app into a control plane and a separate WebSocket gateway, because one process couldn't own both order entry and realtime fanout under load.
-6. **Squeeze toward the target (final days).** The `SortedDict` → bucket-array order book (below), three Redis reads collapsed into one, `@dataclass(slots=True)`, three WebSocket gateways behind nginx `least_conn`, an auth cache, and the WebSocket race that became my sharpest scar (BUG-005, also below).
+4. **The balance rewrite.** We tore out a fragile `available + reserved` wallet model and replaced it with a single realized-P&L number. There's a commit literally titled `"SLIGHT BROKEN; rework of balance logic"`, which is exactly as reassuring as it sounds.
+5. **The two-plane split.** The single biggest performance lever in v1's whole history: making the engine run *purely in memory during a round* and bulk-persist only at the end, which killed the per-fill database write on the hot path. In the same era we split the one FastAPI app into a control plane and a separate WebSocket gateway, because one process couldn't own both order entry and realtime fanout under load.
+6. **Squeeze toward the target (final days).** The `SortedDict` → bucket-array order book (below), three Redis reads collapsed into one, `@dataclass(slots=True)`, three WebSocket gateways behind nginx `least_conn`, an auth cache, and the WebSocket race that became the sharpest scar (BUG-005, also below).
 
 Every era added a layer around the matching core to make it faster or more scalable. And every layer added a seam — a place where two components now had to agree about state. Keep count, because that's where all the bugs turned out to live.
 
@@ -84,9 +83,9 @@ What I *do* have is the same idea, measured cleanly, because v2's order book is 
 
 ## The wall: two ways a load test lied to me
 
-I decided on the rewrite because the old system hit a wall under load. But the part I found most interesting, looking back, is that the load test that found the wall was lying to me — and telling the lie apart from the truth is the actual lesson.
+The event lag was the symptom; I wanted the cause, so before the competition I load-tested v1 hard. The part I found most interesting, looking back, is that the load test I trusted to find the ceiling was lying to me about where it was — and telling the lie apart from the truth is the actual lesson.
 
-I aimed for 1,500 aggregate orders a second: 150 users firing about 10 a second each. What happened under load was a *two-front* failure, and for a while I couldn't tell the two fronts apart.
+I aimed for 1,500 aggregate orders a second: 150 users firing about 10 a second each, the load I'd designed for. What I got under that load was a *two-front* failure, and for a while I couldn't tell the two fronts apart.
 
 **Front one: my load generator was the bottleneck, not the server.** I'd written the load client as a single Python process on one asyncio event loop — no `uvloop`, no multiprocessing. One process was opening 200-plus WebSocket connections, firing HTTP order submissions, *and* draining the inbound flood of book updates and trade notifications coming back, all on one core. Worse, I'd coupled the two: each simulated user awaited its own HTTP response before sending the next order. So when the server slowed down, my *client's* send rate collapsed right along with it — a closed loop that throttled itself to somewhere around 10–20% of target. It wasn't measuring the exchange's ceiling. It was measuring its own. I added a `--no-ws` flag to strip the inbound WebSocket load and measure the order path alone, and that's the point I realized the receiving side of my own test had been eating my throughput.
 
@@ -224,7 +223,7 @@ One more trap, so nobody else falls in it. My harness also has a `sweep` mode th
 
 ### So how much of "faster than Python" is real?
 
-The defensible comparison is v1's *measured* saturation (150–286 accepted orders a second, first-hand from the old load-test artifacts) against v2's *measured* sustained rate (20,000, first-hand). That gap is real, and it's about 70×. What I won't claim is a clean apples-to-apples: the two ran on different hardware, and any projection of what an *optimized* v1 could have done is exactly that, a projection. The number I'll stand behind is "the old one fell over in the low hundreds and the new one doesn't at 20k."
+The defensible comparison is v1's *measured* saturation (150–286 accepted orders a second, first-hand from the old load-test artifacts) against v2's *measured* rate (~18k acked at 20k offered, first-hand). That gap is real, and it's about 60–70×. What I won't claim is a clean apples-to-apples: the two ran on different hardware, and any projection of what an *optimized* v1 could have done is exactly that, a projection. The number I'll stand behind is "the old one topped out in the low hundreds and the new one doesn't strain at 20k."
 
 ## Which design choice actually mattered: break each one and re-measure
 
@@ -265,7 +264,7 @@ The array-shaped order book is the clever part, the part worth a diagram — and
 
 ## Competition day
 
-The original ran the actual event. 150 traders, real money, four live races, standings on the projector — and it held together, on a deploy path propped up by a watchdog script and a cloudflared quick-tunnel I would not describe as robust. The rewrite is not a dunk on the thing that shipped. Shipping a working exchange for a room of 150 people on a five-week deadline is the reason there was anything worth rewriting. The v2 story only exists because v1 ran the race first.
+The original ran the actual event. 150 traders, four racer-markets a race, standings on the projector — and it held the room, on a deploy path propped up by a watchdog script and a cloudflared quick-tunnel I would not describe as robust. The rewrite is not a dunk on the thing that shipped. A few of us getting a working exchange in front of 150 people, for our first time building anything like it, is the reason there was anything worth rewriting. The v2 story only exists because v1 ran the race first.
 
 The ledger of what's proven versus not:
 
