@@ -16,20 +16,20 @@
 const chapterMaps: { chapter: string; sectionSlugs: string[] }[][] = [
   // mario-markets.mdx
   [
-    { chapter: 'The game', sectionSlugs: ['the-game-and-why-it-needed-a-real-exchange'] },
+    { chapter: 'The game', sectionSlugs: ['context-mario-markets'] },
     {
-      chapter: 'Version one, and where it broke',
+      chapter: 'Version one',
       sectionSlugs: [
-        'version-one-python-redis-and-a-board-game-underneath',
+        'version-one-python-redis-postgres',
         'the-wall-two-ways-a-load-test-lied-to-me',
-        'the-case-for-a-rewrite-it-was-never-just-speed',
+        'why-i-wanted-a-rewrite-not-a-patch',
       ],
     },
     {
       chapter: 'The rewrite',
       sectionSlugs: [
-        'version-two-one-thread-no-locks-one-source-of-truth',
-        'proving-it-didnt-break-a-second-engine-on-purpose',
+        'how-i-built-v2',
+        'how-i-convinced-myself-it-was-correct',
       ],
     },
     {
