@@ -23,7 +23,7 @@ I sized it for the event, estimating roughly 150 people trading at maybe ten ord
 2. **An engine I could test for correctness** — for fairness and durability — rather than hope it held on the day.
 3. **A design I could extend** with a new game each year without touching the engine code, and eventually let competitors run automated trading strategies, which will push far higher loads.
 
-The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2).
+The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2-public).
 
 <Callout type="lesson" title="TL;DR">
 The first version, the Python exchange that ran the competition, saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was pure queueing delay — orders piled up and p99 climbed into the tens of seconds. The Rust rewrite handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap, though the two ran on different hardware, so I hold that number loosely.
