@@ -17,18 +17,24 @@ import V1V2SideBySide from '../../components/V1V2SideBySide.astro';
 import HotPath from '../../components/HotPath.astro';
 import EgressProfile from '../../components/EgressProfile.astro';
 
-This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development that year, and I led a new game called Mario Markets: competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange and engine behind it over the months leading up to the event, and I designed and drove it.
+[remmeber to link the repo]
 
-I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load — peak throughput during the competition stayed under 1,000 orders a second — it worked, but not well. At the loudest moments of a race the latency got bad for some players: they'd fire an order and wait seconds to see it land. So over the following months I built a second version. The goals: (1) no lag at that load, with room to grow well past it; (2) an engine I could prove correct — fair and durable — instead of trusting on the day; and (3) a design I could extend with trading bots and a new game each year without touching the engine. None of that was strictly necessary for 150 people trading by hand. I wanted to know where the latency actually went, and the headroom pays off the moment bots are hitting the book harder than any human can.
+This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets: competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event.
+
+[the what the traders were actually betting on section goes under more in table of contents which is all the way at the bottom / out of order]
+
+I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load — peak throughput during the competition stayed under 1,000 orders a second — it worked, but not well. At the loudest moments of a race the latency got bad for some players: they'd fire an order and wait seconds to see it land. So over the following months I built a second version. The goals: [format these as ordered list or bullets] (1) no lag at that load, with room to grow well past it; (2) a provably correct engine that is fair and durable, and (3) a design I could extend with a new game each year without touching the engine code and allowing competitors to run automated trading strategies (which will hit the book harder past current limits).
 
 <Callout type="lesson" title="TL;DR">
-The first version, the Python exchange that ran the competition, saturated south of **300 accepted orders a second**, and past that its submit-to-fill latency was pure queueing delay: orders piled up and p99 climbed into the tens of seconds. The rewrite takes **20,000 orders a second** offered, acks about **18,000** at an engine-side p99 of **33 microseconds**, and never drops a message on a client's reliable lane.
+The first version, the Python exchange that ran the competition, saturated south of **300 accepted orders a second**, and past that its submit-to-fill latency was pure queueing delay: orders piled up and p99 climbed into the tens of seconds. The rewritten version accepts about **18,000** orders a second at an engine-side p99 of **33 microseconds** and never drops a message on a client's reliable lane.
 
 That's a roughly 60–70× gap, though the two ran on different hardware, so I hold that number loosely. Three things surprised me building it:
 
-- **The speedup mostly wasn't about the language.** I benchmarked each v2 design choice by breaking it on purpose and re-measuring. The dominant lever was **not allocating on the hot path**, worth ×5.3 throughput and a far better tail. The array-shaped order book everyone diagrams was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk.
-- **Going faster meant getting *more* correct, not less.** The matching core was right the whole time. Everything that broke — lost orders, a double-settlement risk, races — lived in the plumbing around it, so faster and correct pulled the same direction, not opposite ones.
-- **Measurement lied to me twice.** My load test lied about which side was slow and cost me weeks; later my profiler lied for a different reason.
+- **The speedup mostly wasn't about the language. [rewrite this phrasing]** I benchmarked each v2 design choice [dont present them all as ablation]. The dominant lever was **not allocating on the hot path**, worth ×5.3 throughput and a far better tail [quantify this clearly, like the previous version]. The array-shaped order book was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk.
+- **Going faster meant getting *more* correct, not less. [does this make sense, is this upposed to be surprising? / should i keep it?]** The v1 matching core was correct, and everything about it that broke — lost orders, a double-settlement risk, races — lived in the plumbing around it. The v2 redesign choices making it faster and correct pulled the same direction, not opposite ones.
+- **Measurement lied to me twice.** My faulty load test implementation and interpretation lied about which side was slow and cost me weeks.
+
+[anythign else we want to add in the TLDR?]
 </Callout>
 
 ## What the traders were actually betting on
@@ -37,59 +43,60 @@ The instrument is a Kalshi-style binary prediction market. Each race tracks four
 
 Underneath each market is a continuous limit order book with price-time priority — limit and market orders, partial fills, cancels, resting liquidity, and a matching engine deciding who trades with whom at what price. On top sit wallets, per-market P&L, and a cumulative leaderboard.
 
-Picture 150 laptops firing at all four books the instant a blue shell knocks the leader out of first. That one event just moved every racer's odds of finishing best, so every market reprices at once. A few hundred milliseconds of lag is the difference between a fill and a miss. The exchange doesn't get to be slow, and it definitely doesn't get to be wrong about who holds what.
+Picture 150 laptops firing at all four books the instant a blue shell knocks the leader out of first. That one event just moved every racer's odds of finishing best, so every market reprices at once. A few hundred milliseconds of lag is the difference between a fill and a miss. The exchange doesn't get to be slow, and it definitely doesn't get to be wrong about who holds what. [who holds what, rephrase this to eb slightly more specific]
 
 ## Version one: Python on a deadline
 
 v1 came together fast and on a deadline. I built it with a React frontend, a FastAPI backend, a standalone Python asyncio matching engine, Redis doing double duty as the command bus and the live fanout, and Postgres as the source of truth.
 
+I built it CQRS (Command Query Responsibility Segregation) [explainn concsiely precisely reasnoning why]. `POST /orders` returned `202 Accepted` immediately, without persisting or matching the order: it dropped the command onto a Redis stream and returned. The engine consumed the stream, matched in memory, persisted to Postgres, and published fills over pub/sub; the browser learned what happened when a WebSocket message told it to refetch.
+
+The matching core was correct, but the trouble was all in the plumbing added around it.
+
+[remove POST /orders ->  202 pending, give slightly more space for the back arrow from asyncio engine to browser. ensure this diagram is comrepehsnvie]
+
 <OldTopology />
-
-I built it CQRS (Command Query Responsibility Segregation) and aggressively async. `POST /orders` returned `202 Accepted` immediately, without persisting or matching the order: it dropped the command onto a Redis stream and returned. The engine consumed the stream, matched in memory, persisted to Postgres, and published fills over pub/sub; the browser learned what happened when a WebSocket message told it to refetch.
-
-The consequence you feel immediately: your P&L on screen always lags a refetch. "I placed an order but I don't see it yet" isn't a bug in that design, it's the design.
-
-The matching core was correct. One shared order book per market; a trade crosses when a YES bid and a NO bid sum to at least 100; FIFO price-time priority; fills at the resting order's price. That logic went in early and stayed sound. The trouble was all in the plumbing around it.
 
 ### How v1 grew
 
-I didn't design v1 and then build it; it accreted. Each layer I added around the matching core to make it faster or more scalable also added a *seam* — a boundary where two components now had to agree about state — and every bug I hit lived on one of those seams, never in the core. The layers that carried the story, in order:
+Each layer I added around the matching core believing to make it faster or more scalable also added a *seam* where two components now had to agree about state. In order:
 
-- **The order book itself.** It started as a `SortedDict`, a balanced tree keyed by price. Simple, and it worked. I later replaced it, for a reason that turned out to seed the whole rewrite (more in v2).
-- **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load, so I split it into a control plane and a separate gateway. In the same stretch I made the engine run purely in memory during a round and bulk-persist only at settlement. That killed the per-order database write on the hot path — the single biggest speedup in v1 — and it's the seam that means a crash mid-round loses the whole round.
-- **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines. They shared a sequence-tracking map without a lock and raced: updates dropped and reordered until I serialized access, which took more attempts than I'd like to admit.
+- **The order book itself.** It started as a `SortedDict`, a balanced tree keyed by price. Simple, and it worked. I later replaced it (more in v2).
+- **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load, so I split it into a control plane and a separate gateway.
+- **[title]** I made the engine run purely in memory during a round and bulk-persist only at settlement. That killed the per-order database write on the hot path — the single biggest speedup in v1 [although it trades away recovery for mid round crash, which in our case was acceptable].
+- **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines. They shared a sequence-tracking map with serialized access. [dont mention this bug]
 
 ## Where version one broke down
 
-The visible problem was speed, so before the event I load-tested v1 hard. My testing at the time was thinner than it should have been, and the load test I trusted to find the ceiling was lying to me about where it was.
+The visible problem was speed, so before the event I load-tested v1 hard. My testing at the time was thinner than it should have been. [rephrase this, essentially testing was insufficient here] I aimed for 1,500 aggregate orders a second — 150 users at ~10/s each, the load I'd designed for — and got a *two-front* failure I couldn't cleanly tell apart.
 
-I aimed for 1,500 aggregate orders a second — 150 users at ~10/s each, the load I'd designed for — and got a *two-front* failure I couldn't cleanly tell apart.
+The first front was my own load generator. I'd written it as a single Python process on one asyncio event loop, opening 200-plus WebSocket connections, firing HTTP order submissions, and draining the inbound flood of book updates and trade notifications, all on one core. Additionally, there was coupling as each simulated user awaited its own HTTP response before sending the next order. So when the server slowed down, my client's send rate collapsed with it and throttled itself to 10–20% of target. So it measured its own ceiling instead of the exchange's.
 
-The first front was my own load generator. I'd written it as a single Python process on one asyncio event loop, opening 200-plus WebSocket connections, firing HTTP order submissions, and draining the inbound flood of book updates and trade notifications, all on one core. Worse, I'd coupled it: each simulated user awaited its own HTTP response before sending the next order. So when the server slowed down, my client's send rate collapsed right along with it — a closed loop that throttled itself to 10–20% of target. It wasn't measuring the exchange's ceiling. It was measuring its own.
-
-The second front was underneath that throttled client: the server was also saturating. At the sub-300 orders a second my crippled client could deliver, one asyncio actor per market (four in all) topped out around **150–286 accepted orders a second**, submit-to-fill p99 between **28 and 78 seconds**, and a backlog that climbed as high as **17,002** queued commands.
+The second front was underneath: the server was also saturating. At the sub-300 orders a second my client could deliver, one asyncio actor per market (four in all) topped out around **150–286 accepted orders a second**, submit-to-fill p99 between **28 and 78 seconds**, and a backlog that climbed as high as **17,002** queued commands.
 
 <TwoFrontWall />
 
-The two ceilings sat almost on top of each other — the client could offer ~150–300/s, the server saturated at ~286/s — so I couldn't cleanly separate them. The lesson stuck: when one process drives connections, sends orders, and drains responses on a single event loop, a saturated generator and a saturated server produce the identical symptom, an achieved rate that flatlines below target. I couldn't trust the server number until I ran the generator on separate hardware, and eventually on separate machines. (The network was never close; WebSocket traffic peaked around 3.7 MB/s. This was compute and coordination, not bandwidth.)
+The client could offer ~150–300/s, the server saturated at ~286/s so I couldn't cleanly separate them here. I learned that I couldn't trust the server number until I ran the generator on separate hardware. (WebSocket traffic peaked around 3.7 MB/s so there was no bandwidth issue) [revise this lesson learn, should be generalizable, a real good takeaway based on this issue]
 
-Speed was the front I could see. The one I cared more about was quieter: v1 gave me almost no way to know it hadn't corrupted itself, and I'd built it that way on purpose, for reasons that made sense on a deadline.
+There was another issue with the v1 desingn, which was that there wasn't an easy way to know it hadn't corrupted itself. [not here but mention at start of a section thatmakes sense, issue wiht load generation and correctness made from poor decisions on a deadline, if you think this is acceptable]
 
-Durability is the sharpest example. During a round v1 matched in memory and wrote to Postgres only at settlement. The in-memory heap was the source of truth, and skipping the per-order database write was the single biggest thing that made it fast enough to run the event. The cost: a crash mid-round loses the whole round, and settlement read state from two places that were supposed to agree by construction and didn't quite. I took that trade knowingly. The rest of v1's soft spots had the same shape, each a reasonable shortcut that left a seam:
+During a round v1 matched in memory and wrote to Postgres only at settlement. The in-memory heap was the source of truth, and skipping the per-order database write was the single biggest thing that made it fast enough to run the event. The cost: a crash mid-round loses the whole round, and settlement read state from two places that were supposed to agree by construction and didn't quite. I took that trade knowingly. [make this section more concsie] The rest of v1's soft spots had the same shape, each a reasonable shortcut that left a seam:
 
-- The Redis control bus carried untyped, unacknowledged messages, so a dropped command failed silently.
+- The Redis control bus carried untyped [what does untyped mean here? is this needed / meaningful], unacknowledged messages, so a dropped command failed silently.
 - A per-endpoint flag let some reads answer from cache and some from Postgres, which could disagree.
-- The sharded fanout raced on that unlocked sequence map until I serialized it — a race I only had because I'd sharded to scale.
+- The sharded fanout raced on that unlocked sequence map until I serialized it.
 
-Same story every time: a seam, not the core. So the pattern I took into v2 was to stop adding seams around the matching core. Concretely: one source of truth instead of a cache and a database that fork, one typed transport instead of a bus bolted onto a pub/sub, real backpressure instead of an unbounded backlog, and invariants the type system checks instead of ones I have to remember. (Money was integer cents in both versions. This was never a floats story; the case for the rewrite was durability and structure, not arithmetic.)
+So one pattern I took into v2 was to stop adding seams around the matching core. For this scale, maintain only one source of truth instead of a cache and a database that fork, one typed transport instead of a bus bolted onto a pub/sub, real backpressure instead of an unbounded backlog. [ensure these principles are best practice and precise]
 
-## Building version two: one thread, no locks
+## Version two: one thread, no locks
+
+[the v2 diagram says spmc out but only goes to journal WAL, also weird spacing in the diagram]
 
 <V1V2SideBySide />
 
-The design followed from that one constraint — stop adding seams around the matching core — plus the goal of no lag at the event's load, with headroom to spare.
+[the tradeoff here needs ot be made explicit, for example why single thread is okay for this setting, be precise and concise]
 
-**I gave the whole round to a single engine thread.** One OS thread owns every order book and every wallet, does all the mutation, and never takes a lock, because nothing else touches that state while it's matching. I chose this for a property I'd learned to want the hard way: determinism. Feed the same sequence of commands in and you get bit-for-bit identical output every time. In v1, "who traded first" depended on which sharded worker saw a message when. In v2 a single ingress task stamps every command with a sequence number the instant it arrives, and that number is the only clock that matters. Price-time priority means nothing if two components disagree about the time, so I made sure there was only one.
+**I gave the whole round to a single engine thread.** One OS thread owns every order book and every wallet, does all the mutation, and never takes a lock, because nothing else touches that state while it's matching. I chose this for determinism, a property I'd learned to want the hard way. Feeding the same sequence of commands in and you get bit-for-bit identical output every time [which is also good for testing? in general should be made clear as well precisely and concisely that v2 was designed to be easily testable at all levels]. In v1, "who traded first" depended on which sharded worker saw a message when. In v2 a single ingress task stamps every command with a sequence number the instant it arrives, and that number is the only clock that matters. Price-time priority means nothing if two components disagree about the time, so I made sure there was only one. [also we should never present things as did this and this, should always be subtly (or not so subtly) demonstrating active thinking, reasoning, tradeoffs, deciison making, best engineering principles and undeerstanding, from first principles through the lagnuage, content, and delivery of the blog]
 
 Commands reach that thread over a lock-free single-producer/single-consumer ring, and events leave over another. The engine busy-spins reading its inbound ring: no async runtime, no scheduler, no futures, just a thread in a loop. A hand-rolled lock-free ring is exactly the kind of thing that's subtly wrong for months, which is why I later model-check it instead of trusting my reading of it.
 
