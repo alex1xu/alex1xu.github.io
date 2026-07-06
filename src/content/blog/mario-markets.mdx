@@ -34,6 +34,8 @@ Four things I didn't expect:
 - **Speed and correctness were the same decision.** The single writer that made matching fast is what made it race-free and deterministic, and determinism is what let me test the money path against an independent reference book on every command — a 600-case differential harness plus replay, so a bug shows up as a divergence, not a wrong number I have to notice.
 - **The engine was never the bottleneck.** At saturation it idled while a single-threaded egress path — delivering fills back to 250 clients — set the ceiling. Finding that meant taking the engine off the wire to measure it alone, then ruling out my own load generator with a second one across three machines.
 - **My own tools lied to me, twice.** A load test that shared a core with its result-draining measured itself instead of the server; later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both cost me days, and catching them is most of what I actually learned.
+
+What I took from the rewrite: decide what to measure before building the thing that measures it, treat the measurement rig as part of the system under test, design for testability up front so a regression surfaces in seconds, and never trust which optimization matters until you break each one and watch the clock.
 </Callout>
 
 ## What the traders were actually betting on
