@@ -723,6 +723,38 @@ p { margin-bottom: 1rem; }
   margin: 1.5rem 0;
 }
 
+/* Collapsible war-story asides — kept out of the main line so the argument
+   reads clean, one click away for readers who want the scar. */
+.prose details.aside {
+  margin: 1.75rem 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-soft);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  padding: 0 1.1rem;
+}
+.prose details.aside > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.75rem 0;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.prose details.aside > summary::-webkit-details-marker { display: none; }
+.prose details.aside > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.5rem;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+.prose details.aside[open] > summary::before { transform: rotate(90deg); }
+.prose details.aside[open] > summary { padding-bottom: 0.4rem; }
+.prose details.aside > *:not(summary) { font-size: 0.94rem; }
+.prose details.aside > *:last-child { margin-bottom: 1rem; }
+
 .prose code {
   font-family: var(--font-mono);
   font-size: 0.85em;

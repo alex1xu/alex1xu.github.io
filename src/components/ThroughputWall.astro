@@ -2,13 +2,12 @@
 // The perf payoff, v2 analog of ThroughputLadder. Horizontal bars in orders/second:
 //   v1 measured saturation (~150–286, muted)
 //   v2 measured acked (~18,000 acked at 20k offered, terracotta = mine, solid)
-//   v2 SPEC target (≥50,000, sage, DASHED outline) — a target, NOT a measurement.
-// The honesty is visual: the projected bar is dashed and distinct from the solid measured bars.
-const scaleMax = 55000;
+// Both bars are measured; no projected/target bar (the engine's true wire ceiling
+// is unproven because egress binds first, so there's no honest number to draw).
+const scaleMax = 22000;
 const data = [
   { label: 'v1 saturation', value: 286, kind: 'old', note: 'measured · ~150–286/s', measured: true },
   { label: 'v2 acked', value: 18000, kind: 'mine', note: 'measured · ~18k acked at 20k offered', measured: true },
-  { label: 'v2 SPEC target', value: 50000, kind: 'target', note: 'target · not yet measured', measured: false, prefix: '≥' },
 ];
 const W = 640, rowH = 48, top = 18, labelW = 148, barMax = 396;
 const H = top + data.length * rowH + 24;
@@ -16,7 +15,7 @@ const x = (v) => (v / scaleMax) * barMax;
 const solidFill = { old: 'var(--muted)', mine: 'var(--accent)' };
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Throughput in orders per second. v1 saturated at a measured 150 to 286 per second. v2 acks a measured ~18,000 per second at 20,000 offered. The v2 SPEC target of at least 50,000 per second is a target, not yet measured, drawn as a dashed outline to distinguish it from the two solid measured bars.">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Throughput in orders per second. v1 saturated at a measured 150 to 286 per second. v2 acks a measured ~18,000 per second at 20,000 offered — a roughly 60 to 70 times gap.">
     {data.map((d, i) => {
       const y = top + i * rowH;
       const bw = Math.max(x(d.value), 2);
@@ -36,7 +35,7 @@ const solidFill = { old: 'var(--muted)', mine: 'var(--accent)' };
       );
     })}
   </svg>
-  <figcaption>Measured against measured, then the bar I have <em>not</em> earned yet: v1 saturated at 150–286 orders/s and v2 acks a measured ~18,000 orders/s at 20,000 offered. The ≥50,000 orders/s bar is the SPEC target — drawn dashed because it is a goal, not a measurement.</figcaption>
+  <figcaption>Both bars measured, on different hardware: v1 saturated at 150–286 orders/s, v2 acks ~18,000 orders/s at 20,000 offered. Roughly a 60–70× gap. The engine's true single-core wire ceiling is higher still, but egress binds before I can see it — so there's no honest bar to draw for it.</figcaption>
 </figure>
 
 <style>
