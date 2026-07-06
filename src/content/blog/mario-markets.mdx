@@ -118,7 +118,7 @@ The ring is the one piece of subtle concurrent code, so I model-check it with `l
 
 With the harness in place, I could change the engine and know within seconds whether I'd broken it. That's what made the performance work safe to do. I measured each optimization against the alternative it replaced, on an identical replay stream. Because the engine is deterministic, every configuration returned the same 2,706,139 fills, so any difference was speed and never correctness.
 
-### The order book: a flat array, not a tree
+### The order book: a flat array over a tree
 
 A `SortedDict` is the reflexive choice for an order book, and for a general exchange it's the right one, because prices are unbounded and a balanced tree keeps them sorted in O(log n). But this exchange isn't general. Prices live on the fixed 1–99 cent ladder, so a level is just an integer in `[1, 99]`, which means a level is an array index. The tree's generality is pure overhead here. A 99-slot bucket array gives O(1) indexing to a level and a short bounded scan to find the best price, with no comparisons and no pointer-chasing.
 
