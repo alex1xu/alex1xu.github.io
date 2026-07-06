@@ -12,23 +12,23 @@ import TilingSchematic from '../../components/TilingSchematic.astro';
 import ThroughputLadder from '../../components/ThroughputLadder.astro';
 import RuntimeSplit from '../../components/RuntimeSplit.astro';
 
-I spent a couple of weeks on this FlashAttention mini-project, starting with the forward pass from scratch in CUDA, to get a more hands-on understanding of the key breakthroughs. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems after work. The three weeks before this were CUDA fundamentals and FlashAttention, mostly out of [GPU MODE](https://www.youtube.com/@GPUMODE) lectures, Stanford's [CS336](https://stanford-cs336.github.io/), the PMPP book, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). I'd already taken CS 152 at Berkeley, the upper-division computer architecture class, and worked with Trainium and NKI before, so a lot of the ideas came naturally. But it's one thing to read how a GPU works and program it, and another to make a kernel go fast. The only way I trust my understanding is to build the thing and measure it.
+I spent a couple of weeks on this FlashAttention mini-project, starting with the forward pass from scratch in CUDA, to get a more hands-on understanding of the key breakthroughs. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems. The three weeks before this I spent learning CUDA fundamentals and FlashAttention, mostly out of [GPU MODE](https://www.youtube.com/@GPUMODE) lectures, Stanford's [CS336](https://stanford-cs336.github.io/), the PMPP book, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). I took CS 152, the upper-division computer architecture class, at UC Berkeley this past spring and have previously worked with Trainium and NKI, so a lot of the ideas came naturally. But it's one thing to read about how to program GPUs, and another to actually do it, and make a kernel go fast.
 
 <Callout type="lesson" title="TL;DR">
-"FlashAttention is fast" turns out to bundle two separate wins, and building it forced them apart.
+"FlashAttention is fast" bundles two separate wins, which initially wasn't super clear to me, but building it forced them apart.
 
-- **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores. Fitting the problem and running it fast are separate wins.
-- **Going fast is the second win, and the famous online-softmax trick has almost nothing to do with it.** Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had three ideas about the rest of the gap. When I ablated the online-softmax work, the running max and sum rescale every tutorial spends its length on, it came to **~2% of the runtime** in my kernel. The gap lives in the matmuls and in moving K/V through memory, and the one experiment I'd have bet on refuted me.
-- **Correctness was the hard part, and the math was the easy piece of it.** The dozen-line softmax recurrence I had right early. I lost hours to a kernel that never launched and to a GPU that swapped underneath me mid-session.
+- **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
+- **Going fast is the second win, and the online-softmax trick has little to do with it.** Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
+- **Programming is hard 😭** I spent hours debugging nothing because a kernel never launched and the GPU swapped underneath me.
 
-This is the forward pass, measured on one A100. The backward pass and the Hopper-era FA3/4 story are a follow-up.
+This is the forward pass, measured on one A100. The backward pass and the Hopper FA3/4 are left to a follow-up.
 </Callout>
 
-Everything here ran on a single **A100-SXM4-80GB** (108 SMs, 2.0 TB/s HBM, 312 FP16 tensor-core TFLOP/s) on Lightning AI. Every TFLOP/s number is the attention FLOPs at `B=8, H=16, N=4096, d=128`, fp16, non-causal, timed with CUDA events. "SDPA" is PyTorch's flash backend on the same shapes.
+Everything here ran on a single **A100-SXM4-80GB** (108 SMs, 2.0 TB/s HBM, 312 FP16 tensor-core TFLOP/s) on Lightning AI (thanks for the free credits!). Every TFLOP/s number is the attention FLOPs at `B=8, H=16, N=4096, d=128`, fp16, non-causal, timed with CUDA events. "SDPA" is PyTorch's flash backend on the same shapes.
 
 ## The memory wall
 
-Before writing a single kernel I wrote the naive baseline, because you can't appreciate the fix without feeling the problem.
+Before writing a single kernel I wrote the naive baseline to get a better my understanding of the problem (and solution).
 
 <CodeCard file="naive.py">
 ```python
@@ -36,27 +36,27 @@ def naive_attention(q, k, v):
     # q,k,v: [B, H, N, d]
     d = q.shape[-1]
     scale = 1.0 / math.sqrt(d)
-    s = (q @ k.transpose(-2, -1)) * scale   # [B, H, N, N]  <- the problem
+    s = (q @ k.transpose(-2, -1)) * scale # [B, H, N, N]  <- the problem
     p = torch.softmax(s, dim=-1)
     return p @ v
 ```
 </CodeCard>
 
-That `[B, H, N, N]` scores tensor is the whole story. At `B=8, H=16, N=8192` in fp16 it's `8·16·8192·8192·2` bytes, which is **17 GB** for one intermediate. Softmax reads the scores to write the probabilities, so both are resident at once and you're holding it twice. I swept sequence length and watched it climb.
+For the `[B, H, N, N]` scores tensor, at `B=8, H=16, N=8192` in fp16 it's `8·16·8192·8192·2` bytes, which is **17 GB** for one intermediate. Softmax reads the scores to write the probabilities, so both are resident at once and you hold it twice. I swept sequence length:
 
 <MemoryWall />
 
-Even on an 80 GB A100, naive attention falls over at `N=16384`. The scores are ~69 GB on their own, and ~137 GB once softmax holds the second copy. Shrinking the batch buys you room, since the tensor is linear in `B·H`, but it doesn't remove the wall. The blowup is O(N²) in sequence length, so a longer context walks you back into it at any batch size, and you've traded away throughput to get there.
+Even on an 80 GB A100, naive attention falls over at `N=16384`. The scores are ~69 GB on their own, and ~137 GB once softmax holds the second copy. Shrinking the batch buys you room, since the tensor is linear in `B·H`, but it doesn't remove the wall. The blowup is O(N²) in sequence length, so a longer context walks you back into it at any batch size and you trade away throughput to get there.
 
-FlashAttention's claim is that you never materialize that tensor at all. You tile it, keep a running softmax, and the memory drops from O(N²) to O(N).
+FlashAttention's claim is that you never have to materialize that tensor at all. You tile it, keep a running softmax, and the memory drops from O(N²) to O(N).
 
 <TilingSchematic />
 
-I'll come back to whether that's also what makes it fast. It isn't, and that surprised me.
+It isn't what also makes it fast! And that surprised me.
 
 ## The algorithm in one paragraph
 
-Online softmax (Milakov & Gimelshein, [2018](https://arxiv.org/abs/1805.02867)) computes a softmax in a single streaming pass with a running max `m` and running denominator `l`, rescaling the partial result whenever the max moves. FlashAttention ([Dao et al. 2022](https://arxiv.org/abs/2205.14135)) wraps that in a tiling loop. Load a block of Q, stream blocks of K and V through fast on-chip SRAM, accumulate the output block as you go, and never write the scores to HBM. I'm not going to re-derive it, because the [paper](https://arxiv.org/abs/2205.14135) and [GPU MODE Lecture 12](https://www.youtube.com/watch?v=zEuwuCTEf_0) do it better than I can. What happened when I built it is the point.
+Online softmax (Milakov & Gimelshein, [2018](https://arxiv.org/abs/1805.02867)) computes a softmax in a single streaming pass with a running max `m` and running denominator `l`, rescaling the partial result whenever the max moves. FlashAttention ([Dao et al. 2022](https://arxiv.org/abs/2205.14135)) wraps that in a tiling loop. Load a block of Q, stream blocks of K and V through fast on-chip SRAM, accumulate the output block as you go, and never write the scores to HBM. I'm not going to re-derive it, because the [paper](https://arxiv.org/abs/2205.14135) and [GPU MODE Lecture 12](https://www.youtube.com/watch?v=zEuwuCTEf_0) already do it better than I can.
 
 Here's the whole algorithm in plain PyTorch, which I wrote first as a numerical oracle to check the CUDA against. It streams K/V in blocks and never holds more than one block of scores.
 
@@ -65,27 +65,27 @@ Here's the whole algorithm in plain PyTorch, which I wrote first as a numerical 
 def tiled_attention(q, k, v, block_k=128):
     B, H, N, d = q.shape
     scale = 1.0 / math.sqrt(d)
-    m   = torch.full((B, H, N, 1), float("-inf"))   # running max
-    l   = torch.zeros((B, H, N, 1))                  # running denom
-    acc = torch.zeros((B, H, N, d))                  # unnormalized output
+    m   = torch.full((B, H, N, 1), float("-inf")) # running max
+    l   = torch.zeros((B, H, N, 1)) # running denom
+    acc = torch.zeros((B, H, N, d)) # unnormalized output
     for j in range(0, N, block_k):
         kj, vj = k[:, :, j:j+block_k, :], v[:, :, j:j+block_k, :]
-        s = (q @ kj.transpose(-2, -1)) * scale       # [B,H,N,bk] — one block of S only
+        s = (q @ kj.transpose(-2, -1)) * scale # [B,H,N,bk] — one block of S only
         m_new = torch.maximum(m, s.max(dim=-1, keepdim=True).values)
-        alpha = torch.exp(m - m_new)                 # rescale factor when the max moves
+        alpha = torch.exp(m - m_new) # rescale factor when the max moves
         p = torch.exp(s - m_new)
         l   = alpha * l   + p.sum(dim=-1, keepdim=True)
         acc = alpha * acc + p @ vj
         m = m_new
-    return acc / l        # divide by l once, at the very end (the FA2 choice)
+    return acc / l # divide by l once, at the very end (the FA2 choice)
 ```
 </CodeCard>
 
-Dividing by `l` once at the end, keeping the accumulator unnormalized through the whole loop, is one of the choices that separates FlashAttention-2 from -1. Both keep the max-rescale `alpha = exp(m - m_new)` every block, because you can't avoid it when a later block raises the running max. What FA2 drops is the per-block *normalization*, the divide by `l` that FA1 does on every block. FA2 defers that single division to the end. The point of the move is to cut non-matmul work off the inner loop, and the profiling later has something to say about how much that's worth on this kernel.
+Dividing by `l` once at the end, keeping the accumulator unnormalized through the whole loop, is one of the choices that separates FlashAttention-2 from -1. Both keep the max-rescale `alpha = exp(m - m_new)` every block, because you can't avoid it when a later block raises the running max. What FA2 drops is the per-block normalization, the divide by `l` that FA1 does on every block (FA2 defers that single division to the end). The point of the move is to cut non-matmul work off the inner loop (we look at how much this is worth in the profiling later).
 
-## Win #1: tiling fixes memory, and made it 11× slower
+## Win #1: tiling fixes memory, but made it 11× slower
 
-The first real kernel is the simplest thing that tiles correctly. One CUDA thread per query row, K and V staged into shared memory a block at a time, the online-softmax recurrence in scalar floating-point. One thread to a row means the arithmetic runs on the general-purpose CUDA cores and the tensor cores sit idle the whole time. That isolates memory discipline from fast compute, which is what I wanted here. It proves tiling alone fixes the wall, and it's an honest "before" for when the tensor cores go in.
+My first kernel is the simplest thing that tiles correctly. One CUDA thread per query row, K and V staged into shared memory a block at a time, the online-softmax recurrence in scalar floating-point. One thread to a row means the arithmetic runs on the general-purpose CUDA cores and the tensor cores sit idle the whole time. That isolates memory discipline from fast compute.
 
 <CodeCard file="flash_min.py">
 ```cuda
@@ -114,15 +114,13 @@ for (int j = 0; j < N; j += BLOCK_N) {
 ```
 </CodeCard>
 
-It works. Max abs error against PyTorch's `scaled_dot_product_attention` is ~1e-3 in fp16. The part I cared about is that it ran `N=16384` at **2.15 GB**, exactly where the naive version needed ~137 GB and died. O(N) memory, made concrete, in one short kernel.
+Max abs error against PyTorch's `scaled_dot_product_attention` is ~1e-3 in fp16 (it works). More importantly this kernel shows tiling alone fixes the wall. It ran `N=16384` at **2.15 GB**, exactly where the naive version needed ~137 GB and died.
 
-And it runs at **~5 TFLOP/s. The naive baseline does 54.** Naive is slow on memory, but its two big matmuls go straight to cuBLAS's tensor-core kernels, which my scalar loop can't touch. Tiling for memory made the kernel **11× slower**. Fitting and going fast turned out to sit on different axes, and I'd just fixed the first one at the cost of the second.
-
-So the next kernel does the obvious thing and hands those matmuls to the tensor cores.
+And it runs at **~5 TFLOP/s. The naive baseline does 54.** Naive is slow on memory, but its two big matmuls go straight to cuBLAS's tensor-core kernels, which my scalar loop can't touch. So on its own, tiling for memory made the kernel **11× slower**. Turns out fitting and going fast sit on different axes! And fixing the first costs the second.
 
 ## Win #2: adding tensor cores
 
-The second kernel keeps everything in registers and shared memory and does both matmuls, `Q·Kᵀ` and `P·V`, on the tensor cores via WMMA. WMMA is the CUDA API for handing the tensor cores 16×16 tiles as opaque "fragments" and getting their product back. I also switched to the FlashAttention-2 loop order. One warp, the 32 threads a GPU runs in lockstep, owns a block of 16 query rows on the outside and streams the K/V blocks through on the inside, keeping its running `(m, l)` and output accumulator local and normalizing by `l` exactly once at the end.
+The second kernel keeps everything in registers and shared memory and does both matmuls, `Q·Kᵀ` and `P·V`, on the tensor cores via WMMA. WMMA is the CUDA API for handing the tensor cores 16×16 tiles as fragments and getting their product back. Here, I also switched to the FlashAttention-2 loop order. This allows one warp to own a block of 16 query rows on the outside and stream the K/V blocks through on the inside, keeping its running `(m, l)` and output accumulator local and normalizing by `l` exactly once at the end.
 
 Before wiring the whole thing together I tested the `Q·Kᵀ` matmul on its own and got 1.9e-5 against PyTorch, so that when the fused kernel was wrong I'd know it wasn't the tensor-core fragments or the transpose trick. You feed K as a column-major fragment, which reinterprets the same row-major buffer as `Kᵀ` with no data movement.
 
@@ -172,58 +170,56 @@ for (int j = 0; j < N; j += 16) {
 ```
 </CodeCard>
 
-This one is correct too. Max abs error against SDPA lands between **1.2e-4 and 4.9e-4** across shapes from `N=16` up to `B=4,H=8,N=2048`, both fp16.
+Max abs error against SDPA lands between **1.2e-4 and 4.9e-4** across shapes from `N=16` up to `B=4,H=8,N=2048`, both fp16.
 
 <Callout type="note" title="Tiling done right buys accuracy back">
-I expected tiling to trade a little accuracy for the memory savings, since I'm summing a softmax in pieces. The opposite happened for this kernel. Its max error is ~1.2e-4 against naive's ~6e-4, because the running `m`, `l`, and output accumulator all live in fp32 while the inputs are fp16, so the block-to-block accumulation never rounds through fp16. What actually buys the accuracy is carrying that accumulator in fp32 across blocks. My earlier scalar tiled kernel skipped that discipline and landed a bit worse than naive (~1e-3), so tiling on its own isn't where the precision comes from.
+I expected tiling to trade a little accuracy for the memory savings, since I'm summing a softmax in pieces. The opposite happened for this kernel. Its max error is ~1.2e-4 against naive's ~6e-4, because the running `m`, `l`, and output accumulator all live in fp32 while the inputs are fp16, so the block-to-block accumulation never rounds through fp16. What actually buys the accuracy is carrying that accumulator in fp32 across blocks. My earlier scalar tiled kernel skipped that and landed a bit worse than naive (~1e-3), so tiling on its own isn't where the precision comes from.
 </Callout>
 
-So I had tensor cores, the real FA2 schedule, and numerical correctness. The kernel above, one warp and 16 keys per block, runs at **~14.7 TFLOP/s, about 7% of SDPA**, still 3.7× slower than the naive baseline I was trying to beat. Widening the K/V block to 64 keys amortizes each softmax update over more work and lifts it to **~21 TFLOP/s**, a real ×1.44. That's where it plateaus.
+So I had tensor cores, the real FA2 schedule, and numerical correctness. The kernel above, one warp and 16 keys per block, runs at **~14.7 TFLOP/s, about 7% of SDPA**, still 3.7× slower than the naive baseline I was trying to beat. Widening the K/V block to 64 keys amortizes each softmax update over more work and lifts it to **~21 TFLOP/s**, a real ×1.44. But that's where it plateaus.
 
 <ThroughputLadder />
 
-Tensor cores were necessary and nowhere near sufficient. The gap from 21 to SDPA's ~200 is the interesting part, so I went after it.
+Tensor cores were necessary, but surprisingly to me nowhere near sufficient. The remaining gap from 21 to SDPA's ~200 was really interesting.
 
-## The autopsy — three ideas, ranked by what the data said
+## Three hypotheses
 
-I had three guesses about why a correct tensor-core kernel was still 10% of SDPA. I'm keeping them in the order I believed them, because the order the data put them in is the actual lesson.
+I had three ideas about why a correct tensor-core kernel was still only 10% of SDPA, and how to bridge the gap.
 
-### Guess 1: amortize the softmax over bigger tiles
+### Idea 1: amortize the softmax over bigger tiles
 
 With a 16-wide K/V block, the per-block softmax bookkeeping runs once per 16 keys. Widen the block to 64 and it runs a quarter as often, so if the bookkeeping is the cost, a 4× wider tile should pay off big.
 
-It was right in direction and wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. A 4× wider tile bought only ×1.44, which means most of the runtime scales with the tile too. If the bookkeeping were the cost, amortizing it 4× would have paid 4×. Getting a quarter of that told me the real cost is in the streaming the wider tile also grew.
+This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. A 4× wider tile bought only ×1.44, which means most of the runtime scales with the tile too. If the bookkeeping were the cost, amortizing it 4× should theoretically pay 4×. Only getting a quarter of that tells me the real cost is in the streaming the wider tile also grew.
 
-### Guess 2: raise occupancy
+### Idea 2: raise occupancy
 
 One warp per block is about 3% occupancy, so the SMs looked starved for warps to hide memory latency behind. I put four warps on a block and opted into dynamic shared memory to fit them.
 
-Occupancy rose to 8 warps per SM, and throughput **fell about 21%**, from 21 TF to ~16.6. I predicted the opposite and the timer refuted it. That refutation is more informative than a win would have been. Adding warps is the standard fix for a *latency*-bound kernel, so if latency-hiding were the whole story, more warps should have helped. It hurt. In my schedule each warp owns its own Q-block and streams all of K and V for it, so four warps on a block re-read K and V four times over instead of sharing them. On a kernel that's already moving too many bytes, the extra warps just multiplied the traffic. Occupancy wasn't the lever.
+Occupancy rose to 8 warps per SM, but throughput actually **fell about 21%**, from 21 TF to ~16.6. To me, adding warps seemed to be the standard fix for a *latency*-bound kernel, so if latency-hiding were the issue, more warps should have helped, but instead it hurt. I think what happened was that because in my schedule each warp owns its own Q-block and streams all of K and V for it, four warps on a block re-read K and V four times over instead of sharing them. On a kernel that's already moving too many bytes, the extra warps multiply the traffic.
 
-### Guess 3: the softmax glue is the cost
+### Idea 3: the softmax glue is the cost
 
-After two misses I stopped guessing and measured. I stripped the online-softmax work out of the kernel entirely, the `exp`, the running max, the rescale, and re-timed against the full kernel and a variant with just the `exp` removed.
+After the first two ideas, I stripped the online-softmax work out of the kernel entirely (the `exp`, the running max, and the rescale) and re-timed against the full kernel, as well as against a variant with just the `exp` removed.
 
 <RuntimeSplit />
 
-At `N=4096` the full kernel is 52.0 ms and the no-softmax kernel is 51.0 ms. The online softmax, the part that *is* FlashAttention, is **~2% of the runtime** here. Removing the `exp` alone does nothing measurable. The algorithm was never the bottleneck.
+At `N=4096` the full kernel is 52.0 ms and the no-softmax kernel is 51.0 ms. The online softmax, it turned out, was only **~2% of the runtime** here. Removing the `exp` alone does nothing measurable. The algorithm was not the bottleneck.
 
-The three experiments point the same way once you stop reading them one at a time. Bigger tiles helped a little and then plateaued, more warps made it worse by multiplying K/V reads, and the softmax is 2%. What's left, and what all three implicate, is memory traffic. My kernel re-streams all of K and V from global memory for every 16-row Q-block, so it moves far more bytes than the algorithm requires, and that's the cost the tile-size and occupancy knobs were both really touching. I want to be careful about how hard I state this. I couldn't run `ncu` to read the stall counters, so "it's bound on K/V traffic" is my leading explanation and not a measured fact. It's the one consistent with all three results, but I didn't isolate it directly.
+Although individually ineffective, I think the results of all three experiments actually point to the same root cause. Bigger tiles helped a little and then plateaued, more warps made it worse by multiplying K/V reads, and the softmax is 2%. What's left, is memory traffic. My kernel re-streams all of K and V from global memory for every 16-row Q-block, so it moves far more bytes than the algorithm requires, and that's the cost the tile-size and occupancy knobs were both really touching. Due to limitations on Lightning AI (and other providers) I couldn't run `ncu` to read the stall counters, so this is just my leading hypothesis that is consistent with all three results.
 
-That result also settles the FA1-vs-FA2 question I left open. FA2's move is to cut non-matmul work off the inner loop, and my ablation says non-matmul work is 2% of this kernel, so that optimization is in the noise here. That says more about my regime than about FA2. I'm running at 10% of peak, which stretches the denominator and shrinks every non-matmul slice. On A100 the softmax `exp` runs on the SFU at roughly 1/16th the tensor cores' fp16 throughput, so per FLOP it's about 16× more expensive than a matmul FLOP. Push the matmul toward peak and that 2% climbs. Minimizing it (FA2) and hiding it behind the tensor cores (FA3's warp specialization) is exactly what you do once the matmul is no longer leaving 90% of the machine on the floor. I'm just not there yet, so I get to see the softmax as free and the traffic as everything.
-
-The real fix is a register-resident kernel that stages K/V once and hands the tensor cores bigger, better-fed tiles, which is the `mma.sync` plus swizzled-shared-memory rewrite. I stopped short of that here.
+FA2's move is to cut non-matmul work off the inner loop, and my ablation says non-matmul work is 2% of this kernel, so that optimization is in the noise here. However, I'm only running at 10% of peak, which stretches the denominator and shrinks every non-matmul slice. On A100 the softmax `exp` runs on the SFU at roughly 1/16th the tensor cores' fp16 throughput, so per FLOP it's about 16× more expensive than a matmul FLOP. Push the matmul toward peak and that 2% climbs. Minimizing it (FA2) and hiding it behind the tensor cores (FA3's warp specialization) is exactly what you do once the matmul is no longer leaving 90% of the machine on the floor. I'm just not there yet, so I get to see the softmax as free.
 
 <details class="aside">
-<summary>Aside: I couldn't run the profiler, and the ablation was better anyway</summary>
+<summary>Aside: I couldn't run the profiler</summary>
 
-I wanted `ncu` (Nsight Compute) for speed-of-light and stall-reason counters, but it's structurally blocked on Lightning. The container runs with `RmProfilingAdminOnly=1` and zero Linux capabilities, which no in-container flag fixes. So I substituted ablation profiling. Regress one component, re-time, attribute the delta. It needs no permissions, and for this question it answered more directly than a counter dump would have. "Remove the thing and watch the wall clock not move" is a cleaner refutation than reading a percentage off a table and inferring from it.
+I wanted `ncu` (Nsight Compute) for speed-of-light and stall-reason counters, but it's structurally blocked on Lightning. The container runs with `RmProfilingAdminOnly=1` and zero Linux capabilities, which no in-container flag fixes. So I substituted ablation profiling.
 
 </details>
 
 ## Most of the time went to things other than the math
 
-The online-softmax recurrence is a dozen lines and I had it right early. The time went somewhere dumber, into making sure the kernel I thought I was running was the kernel that ran at all. Two of those are worth writing down, because both wasted a chunk of a day and both have a one-line tell I now check first.
+I made two rookie mistakes that both wasted a chunk of my day.
 
 <details class="aside">
 <summary>Aside: hours lost to a kernel that never launched</summary>
@@ -240,27 +236,18 @@ There was no compute bug. The kernel had never launched, not once. The launch wa
 + return o;
 ```
 
-That check is the first thing in every kernel harness I write now.
+I will make sure to run this check in every kernel harness I write now.
 
 </details>
 
 <details class="aside">
 <summary>Aside: the GPU changed under me</summary>
 
-Earlier, a different impossibility. My memory sweep reported a 78.9 GB allocation as "OK" on what my environment check said was a 40 GB card. My first instinct was memory oversubscription, host paging making an over-large allocation look like it fit.
+My memory sweep reported a 78.9 GB allocation as "OK" on what my environment check said was a 40 GB card. My first instinct was memory oversubscription, host paging making an over-large allocation look like it fit.
 
-It wasn't. The Lightning instance had swapped from a 40 GB A100 to an 80 GB one between sessions. The tell was timing. `N=12288` took 1.07s against `N=8192` at 0.30s, about 3.5×, in line with the 2.25× FLOP ratio plus a memory-bound penalty, and nowhere near the 5–20× slowdown host paging would cause. `torch.cuda` confirmed 85 GB of total memory. On an ephemeral cloud GPU the machine itself isn't a constant, so I re-verify it every session now, not just the code. The memory ceiling and the crossover sequence length are both pinned to which card this is, and that turned out not to hold still.
+It wasn't. The Lightning instance had swapped from a 40 GB A100 to an 80 GB one between sessions. `N=12288` took 1.07s against `N=8192` at 0.30s, about 3.5×, in line with the 2.25× FLOP ratio plus a memory-bound penalty, and nowhere near the 5–20× slowdown host paging would cause. `torch.cuda` confirmed 85 GB of total memory. On an ephemeral cloud GPU the machine itself isn't a constant, so I need to remember to re-verify it every session now. 
 
 </details>
-
-The last one taught me what "in shared memory" actually means. My first inner loop staged V into shared memory and then read it from global memory anyway, with an index variable that wasn't even defined in that scope.
-
-```diff
-- acc[t] = acc[t]*alpha + p * __half2float(V[base + (long)kj*HEAD_DIM + t]);  // global; kj undefined here
-+ acc[t] = acc[t]*alpha + p * __half2float(Vs[kk*HEAD_DIM + t]);              // the staged smem tile
-```
-
-Staging K/V into shared memory does nothing if you then reach past it to global memory. The fix restored the exact reuse the staging was for. Copying data into SRAM doesn't make it fast to read. You have to actually read it from there, on every access, or the copy was wasted.
 
 ## Where this leaves the forward pass
 
@@ -273,14 +260,14 @@ The forward pass is correct in three versions that each fix one more thing, and 
 | WMMA, FA2 schedule (best) | 21 | tensor cores are necessary, ~10% of SDPA, not enough |
 | PyTorch SDPA (flash backend) | ~200 | the target, ~65% of the card's peak |
 
-The bar I set going in was a correct FA2-scheme kernel, an honest number against SDPA, and the gap explained by mechanism rather than waved at. I hit that and stopped. Chasing SDPA parity is weeks of `mma.sync` tuning for a number I'd never claim anyway, and it wouldn't change the lesson, which is the separation the table makes obvious. The algorithm that *is* FlashAttention was the easy part and nearly free once correct. Everything between my 21 TFLOP/s and SDPA's ~200 is the second problem, feeding the tensor cores without re-reading K/V for every Q-block.
+The bar I set going in was a correct FA2-scheme kernel benchmarked against SDPA. I think The real fix is a register-resident kernel that stages K/V once and hands the tensor cores bigger, better-fed tiles, which is the `mma.sync` plus swizzled-shared-memory rewrite. I stopped short of that here. Chasing SDPA parity is probably hours of `mma.sync` tuning.
 
-One caveat, because it's the kind of claim that's easy to overstate. The memory-wall plot up top measures allocation, the peak bytes resident, and it cleanly shows O(N) against O(N²). It does not measure HBM traffic, the bytes actually moved, which is the quantity a roofline turns on. The two aren't the same, and my kernel is the proof. An ideal FA kernel reads Q, K, and V about once, so its traffic is O(N), but mine re-streams all of K and V for every Q-block, so the bytes it *moves* are closer to O(N²) even though the bytes it *holds* stay O(N). Pinning down the traffic exactly needs the DRAM counters `ncu` gives, which I couldn't run here. So I'm claiming the footprint result and the runtime split, both measured, and I'm leaving the roofline as reasoning rather than dressing it up as a measurement I don't have.
+The memory-wall plot only measures allocation and does not measure HBM traffic. An ideal FA kernel reads Q, K, and V about once, so its traffic is O(N), but mine re-streams all of K and V for every Q-block, so the bytes it *moves* are closer to O(N²) even though the bytes it holds stay O(N). Pinning down the traffic exactly needs the DRAM counters `ncu` gives, which I couldn't run here.
 
 ## What's next
 
-Two things this post skips, coming in a follow-up. The backward pass is the harder half. It has the `D = rowsum(dO ∘ O)` preprocessing trick, it recomputes the scores block by block instead of storing them, trading FLOPs for the HBM a materialized-`S` backward would cost, and it splits into a dK/dV loop and a dQ loop. I'm writing it in Triton, because the backward's difficulty is algorithmic rather than in the scheduling, so Triton's productivity buys more than CUDA's control costs.
+Two things this post skips, coming in a follow-up (eventually). The backward pass is the harder half. It has the `D = rowsum(dO ∘ O)` preprocessing trick, it recomputes the scores block by block instead of storing them, trading FLOPs for the HBM a materialized-`S` backward would cost, and it splits into a dK/dV loop and a dQ loop. I will probably do it in Triton.
 
-The FA3/FA4 frontier is the other one. The gap I hit, a kernel spending its time moving K/V instead of feeding the tensor cores, is what Hopper's Tensor Memory Accelerator and warp specialization were built to close, with dedicated async-copy hardware for the loads and a producer/consumer split that overlaps them with the matmul. The software wall I ran into and the silicon that answers it are the same idea at two layers, which is a good place to pick up next.
+The FA3/FA4 frontier is the other one. The gap I hit, a kernel spending its time moving K/V instead of feeding the tensor cores, is what Hopper's Tensor Memory Accelerator and warp specialization were built to close, with dedicated async-copy hardware for the loads and a producer/consumer split that overlaps them with the matmul.
 
-I'll be honest about why the follow-up is a follow-up and not part of this post. Writing raw kernels is probably not the layer I'm most drawn to, and that's a big part of why this one took me so long to finish. I came away confident I can drop down to this level and reason about a GPU when a problem demands it, which was the point. The parts of the stack I want to spend more time in sit a bit higher up, so I'm leaving the backward pass and the FA3/4 write-up as things I'll come back to rather than forcing them now.
+To be honest writing raw kernels is probably not the layer I'm most drawn to, and that's a big part of why this one took me so long to finish. The parts of the stack I want to spend more time in sit a bit higher up, so I'm leaving the backward pass and the FA3/4 write-up as things I'll come back to!
