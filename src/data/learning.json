@@ -204,13 +204,13 @@
   {
     "date": "2026-06-16",
     "title": "FlashAttention backward pass",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D12"
   },
   {
     "date": "2026-06-17",
     "title": "FlashAttention: edge cases and benchmarks",
-    "status": "upcoming",
+    "status": "done",
     "phase": "Phase 1 · D13",
     "links": [
       {

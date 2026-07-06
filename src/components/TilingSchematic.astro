@@ -1,0 +1,77 @@
+---
+// Two views of the same N×N score matrix S = QKᵀ.
+// Left: naive materializes the whole thing in HBM (O(N²)).
+// Right: FlashAttention holds one Q-block × one K-block tile in SRAM at a time and
+// streams the K/V blocks left→right, carrying a running (m, l) — O(N) in HBM.
+const W = 640, H = 312;
+const n = 8;                 // an 8×8 grid stands in for the N×N score matrix
+const c = 22;                // cell size
+const gy = 96;               // grid top (room above the right grid for the stream arrow)
+const lx = 40;               // left grid origin x
+const rx = 392;              // right grid origin x
+const grid = Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, col) => [r, col]));
+// FA highlight: Q-block = rows 0..1; K-stream cursor at cols 2..3 (mid-sweep)
+const qRows = [0, 1];
+const kDone = [0, 1];        // already streamed
+const kActive = [2, 3];      // resident in SRAM right now
+const bandY = gy, bandH = 2 * c;
+const cellState = (side, r, col) => {
+  if (side === 'left') return 'full';                        // naive: everything materialized
+  if (!qRows.includes(r)) return 'idle';                     // other Q-blocks: not this program
+  if (kActive.includes(col)) return 'active';                // in SRAM now
+  if (kDone.includes(col)) return 'done';                    // already processed, discarded
+  return 'pending';
+};
+const fillOf = { full: 'var(--fg)', active: 'var(--accent)', done: 'var(--accent-soft)', pending: 'var(--bg)', idle: 'var(--bg)' };
+const strokeOf = { full: 'var(--bg)', active: 'var(--accent)', done: 'var(--accent-soft)', pending: 'var(--border)', idle: 'var(--border)' };
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Two views of the N by N attention score matrix. On the left, naive attention materializes the entire matrix in HBM, which is O(N squared) memory. On the right, FlashAttention processes one block of query rows at a time and streams the key/value blocks through on-chip SRAM left to right, holding only one tile resident and carrying a running max and denominator, which is O(N) memory.">
+    <defs>
+      <marker id="ts-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
+    </defs>
+
+    {/* ---- left: naive ---- */}
+    <text x={lx + n * c / 2} y={40} text-anchor="middle" class="ptitle">naive</text>
+    <text x={lx + n * c / 2} y={57} text-anchor="middle" class="psub">the whole S lives in HBM</text>
+    {grid.flat().map(([r, col]) => (
+      <rect x={lx + col * c} y={gy + r * c} width={c - 1.5} height={c - 1.5} rx="1.5"
+            fill={fillOf[cellState('left', r, col)]} stroke={strokeOf[cellState('left', r, col)]} stroke-width="1" />
+    ))}
+    <text x={lx + n * c / 2} y={gy + n * c + 20} text-anchor="middle" class="tag">N × N materialized · O(N²)</text>
+
+    {/* ---- right: FlashAttention ---- */}
+    <text x={rx + n * c / 2} y={40} text-anchor="middle" class="ptitle acc">FlashAttention</text>
+    <text x={rx + n * c / 2} y={57} text-anchor="middle" class="psub">one tile in SRAM at a time</text>
+    {grid.flat().map(([r, col]) => (
+      <rect x={rx + col * c} y={gy + r * c} width={c - 1.5} height={c - 1.5} rx="1.5"
+            fill={fillOf[cellState('right', r, col)]} stroke={strokeOf[cellState('right', r, col)]} stroke-width="1" />
+    ))}
+    {/* Q-block band outline */}
+    <rect x={rx - 3} y={bandY - 3} width={n * c + 4} height={bandH} rx="3" fill="none" stroke="var(--accent)" stroke-width="1.6" />
+    <text x={rx - 10} y={bandY + bandH / 2 + 4} text-anchor="end" class="qlbl">Q-block</text>
+    {/* streaming arrow along the band */}
+    <text x={rx + n * c / 2} y={bandY - 20} text-anchor="middle" class="stream">stream K/V blocks →</text>
+    <line x1={rx + 4 * c} y1={bandY - 10} x2={rx + n * c - 4} y2={bandY - 10} stroke="var(--accent)" stroke-width="1.4" marker-end="url(#ts-arr)" />
+    <text x={rx + n * c / 2} y={gy + n * c + 20} text-anchor="middle" class="tag acc">one block resident · O(N)</text>
+  </svg>
+  <figcaption>The same <code>N×N</code> score matrix <code>S = QKᵀ</code>, two ways. Naive builds all of it in HBM before softmax ever runs — O(N²). FlashAttention gives each block of query rows to one program that streams the K/V blocks through SRAM left to right, keeping only the current tile resident and a running <code>(m, l)</code> as it goes — O(N). Same math, different memory traffic.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.ptitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.ptitle.acc) { fill: var(--accent); }
+  .chart :global(.psub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.tag) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .chart :global(.tag.acc) { fill: var(--accent); }
+  .chart :global(.qlbl) { font-size: 10.5px; fill: var(--accent); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.stream) { font-size: 10px; fill: var(--accent); font-family: var(--font-mono); }
+</style>

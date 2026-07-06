@@ -1,0 +1,45 @@
+---
+// Where the forward pass actually spends its time, from an ablation: strip the
+// online-softmax work (the exp + running max/sum rescale) and re-time. At N=4096
+// the kernel goes 52.0 ms → 51.0 ms — the softmax "glue" everyone teaches is
+// ~2% of runtime. The other ~98% is the matmuls plus moving K/V and O through memory.
+// Ablation (A100-80GB, B8 H16 d128 fp16): full 52.0 / no_exp 52.1 / no_softmax 51.0 ms.
+const W = 640, H = 150;
+const barX = 40, barY = 46, barW = 560, barH = 40;
+const softmaxFrac = 0.02;                 // (52.0 - 51.0) / 52.0 ≈ 2%
+const mmW = barW * (1 - softmaxFrac);
+const smW = barW * softmaxFrac;
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="A single horizontal bar showing where the forward pass spends its time. About 98% is matmul plus moving K, V, and the output through memory. About 2% is the online softmax — the exp and the running max and denominator rescaling. Removing the softmax work entirely takes the kernel from 52.0 to 51.0 milliseconds at N equals 4096, so the part of the algorithm everyone teaches is nearly free; the cost is the matmul and memory plumbing.">
+    <text x={barX} y={30} class="ptitle">where the forward pass spends 52 ms (N=4096)</text>
+
+    {/* matmul + memory plumbing */}
+    <rect x={barX} y={barY} width={mmW} height={barH} rx="3" fill="var(--fg)" />
+    <text x={barX + mmW / 2} y={barY + barH / 2 + 1} text-anchor="middle" class="seg-in">matmul + K/V/O memory plumbing</text>
+    <text x={barX + mmW / 2} y={barY + barH / 2 + 15} text-anchor="middle" class="seg-in-sub">~98%</text>
+
+    {/* online softmax */}
+    <rect x={barX + mmW} y={barY} width={smW} height={barH} rx="3" fill="var(--accent)" />
+
+    {/* callout line to the sliver */}
+    <line x1={barX + mmW + smW / 2} y1={barY + barH} x2={barX + mmW + smW / 2} y2={barY + barH + 20} stroke="var(--accent)" stroke-width="1.2" />
+    <text x={barX + barW} y={barY + barH + 33} text-anchor="end" class="acc-lbl">online softmax — the FlashAttention idea — ~2%</text>
+  </svg>
+  <figcaption>The forward pass, ablated: strip the online-softmax work (the <code>exp</code> and the running max/denominator rescale) and the kernel goes 52.0 → 51.0 ms at <code>N=4096</code>. The trick that <em>is</em> FlashAttention costs ~2% of runtime. The other ~98% is the two matmuls and streaming K/V and the output through memory — which is where the whole gap to SDPA lives.</figcaption>
+</figure>
+
+<style>
+  .chart { margin: 1.75rem 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart figcaption {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.5;
+  }
+  .chart :global(.ptitle) { font-size: 12.5px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.seg-in) { font-size: 11.5px; fill: var(--bg); font-family: var(--font-sans); font-weight: 600; }
+  .chart :global(.seg-in-sub) { font-size: 10px; fill: var(--bg); font-family: var(--font-mono); opacity: 0.85; }
+  .chart :global(.acc-lbl) { font-size: 10.5px; fill: var(--accent); font-family: var(--font-mono); }
+</style>

@@ -13,8 +13,8 @@ function formatDate(d: string) {
 }
 
 const sections = [
-  { id: 'learning-log', label: 'Learning log' },
   { id: 'posts', label: 'Posts' },
+  { id: 'learning-log', label: 'Learning log' },
 ];
 ---
 <Base title="Blog">
@@ -23,11 +23,6 @@ const sections = [
   <nav class="section-nav" aria-label="Page sections">
     {sections.map((s) => <a href={`#${s.id}`}>{s.label}</a>)}
   </nav>
-
-  <section id="learning-log" class="section">
-    <p class="section-title">Learning log</p>
-    <LearningLog />
-  </section>
 
   <section id="posts" class="section">
     <p class="section-title">Posts</p>
@@ -45,6 +40,11 @@ const sections = [
     ) : (
       <p class="empty-note">No posts yet.</p>
     )}
+  </section>
+
+  <section id="learning-log" class="section">
+    <p class="section-title">Learning log</p>
+    <LearningLog />
   </section>
 </Base>
 
