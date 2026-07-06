@@ -26,7 +26,7 @@ const smW = barW * softmaxFrac;
     <line x1={barX + mmW + smW / 2} y1={barY + barH} x2={barX + mmW + smW / 2} y2={barY + barH + 20} stroke="var(--accent)" stroke-width="1.2" />
     <text x={barX + barW} y={barY + barH + 33} text-anchor="end" class="acc-lbl">online softmax — the FlashAttention idea — ~2%</text>
   </svg>
-  <figcaption>The forward pass, ablated: strip the online-softmax work (the <code>exp</code> and the running max/denominator rescale) and the kernel goes 52.0 → 51.0 ms at <code>N=4096</code>. The trick that <em>is</em> FlashAttention costs ~2% of runtime. The other ~98% is the two matmuls and streaming K/V and the output through memory — which is where the whole gap to SDPA lives.</figcaption>
+  <figcaption>The forward pass ablated: strip the online-softmax work (the <code>exp</code> and the running max/denominator rescale) and the kernel goes 52.0 → 51.0 ms at <code>N=4096</code>. The trick in this kernel costs only ~2% of runtime. The other ~98% is the two matmuls and streaming K/V and the output through memory.</figcaption>
 </figure>
 
 <style>

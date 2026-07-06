@@ -55,7 +55,7 @@ const strokeOf = { full: 'var(--bg)', active: 'var(--accent)', done: 'var(--acce
     <line x1={rx + 4 * c} y1={bandY - 10} x2={rx + n * c - 4} y2={bandY - 10} stroke="var(--accent)" stroke-width="1.4" marker-end="url(#ts-arr)" />
     <text x={rx + n * c / 2} y={gy + n * c + 20} text-anchor="middle" class="tag acc">one block resident · O(N)</text>
   </svg>
-  <figcaption>The same <code>N×N</code> score matrix <code>S = QKᵀ</code>, two ways. Naive builds all of it in HBM before softmax ever runs — O(N²). FlashAttention gives each block of query rows to one program that streams the K/V blocks through SRAM left to right, keeping only the current tile resident and a running <code>(m, l)</code> as it goes — O(N). Same math, different memory traffic.</figcaption>
+  <figcaption>The same <code>N×N</code> score matrix <code>S = QKᵀ</code>, two ways. Naive builds all of it in HBM before softmax ever runs — O(N²). FlashAttention gives each block of query rows to one program that streams the K/V blocks through SRAM left to right, keeping only the current tile resident and a running <code>(m, l)</code> as it goes — O(N).</figcaption>
 </figure>
 
 <style>

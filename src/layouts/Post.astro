@@ -3,7 +3,7 @@ import Base from './Base.astro';
 import Hero from '../components/Hero.astro';
 import ShareButton from '../components/ShareButton.astro';
 import ReadingAids from '../components/ReadingAids.astro';
-import giscus from '../data/giscus.json';
+// import giscus from '../data/giscus.json';  // comments/reactions hidden for now
 
 interface Props {
   title: string;
@@ -33,6 +33,7 @@ const isoDate = new Date(date).toISOString();
     <slot />
   </article>
 
+  {/* Comments/reactions hidden for now — restore by removing this comment wrapper.
   <div class="giscus-wrap">
     <script is:inline
       src="https://giscus.app/client.js"
@@ -51,6 +52,7 @@ const isoDate = new Date(date).toISOString();
       async>
     </script>
   </div>
+  */}
 </Base>
 
 <script define:vars={{ slug }}>
