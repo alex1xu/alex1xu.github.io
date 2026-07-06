@@ -28,7 +28,6 @@ const isoDate = new Date(date).toISOString();
     <div class="post-meta">
       <span>{formatted}</span>
       {tags && tags.length > 0 && <span>{tags.join(', ')}</span>}
-      <span class="post-views" hidden></span>
       <ShareButton url={Astro.url.pathname} />
     </div>
     <slot />
@@ -62,22 +61,4 @@ const isoDate = new Date(date).toISOString();
     const read = JSON.parse(localStorage.getItem(key) || '[]');
     if (!read.includes(slug)) { read.push(slug); localStorage.setItem(key, JSON.stringify(read)); }
   } catch {}
-</script>
-
-<script>
-  // Per-post view count from GoatCounter's public counter endpoint. Progressive
-  // enhancement — if the counter is disabled or the fetch fails, the span stays hidden.
-  (async () => {
-    const el = document.querySelector('.post-views');
-    if (!el) return;
-    const path = location.pathname.replace(/\/$/, '') || '/';
-    try {
-      const res = await fetch(`https://alex1xu.goatcounter.com/counter/${path}.json`);
-      if (!res.ok) return;
-      const { count } = await res.json();
-      if (!count) return;
-      el.textContent = `${count} views`;
-      el.hidden = false;
-    } catch {}
-  })();
 </script>
