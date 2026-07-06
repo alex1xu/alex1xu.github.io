@@ -1,32 +1,15 @@
 ---
 // Progressive-enhancement reading aids for a blog post: a sticky top
-// progress bar and a table of contents built from the post's H2 headings.
-// All markup is inert without JS (bar stays 0-width, TOC stays hidden), so
-// the prose is fully readable with scripting disabled.
+// progress bar and a table of contents built from the post's heading
+// hierarchy. All markup is inert without JS (bar stays 0-width, TOC stays
+// hidden), so the prose is fully readable with scripting disabled.
 //
-// The TOC groups H2 sections under chapters when the post's heading slugs
-// match a chapter map below; otherwise it renders a flat list. The map is
-// post-specific (keyed by slug), so a post whose slugs don't match any
-// chapter (e.g. a different post) falls back to the flat TOC automatically.
-//
-// KEEP IN SYNC: if you rename/reorder/add an H2 in a mapped post, update the
-// matching slug here. A discovered H2 whose slug isn't in any chapter is not
-// dropped — it's appended to a trailing "More" chapter so the TOC stays
-// complete even when the map drifts.
-const chapterMaps: { chapter: string; sectionSlugs: string[] }[][] = [
-  // mario-markets.mdx
-  [
-    { chapter: 'The game', sectionSlugs: ['what-the-traders-were-actually-betting-on'] },
-    { chapter: 'Version one', sectionSlugs: ['version-one'] },
-    { chapter: 'Version two', sectionSlugs: ['version-two'] },
-    { chapter: 'Optimizations', sectionSlugs: ['optimizations'] },
-    { chapter: 'Wrapping up', sectionSlugs: ['wrapping-up'] },
-  ],
-];
+// The TOC is derived directly from the post's H2/H3 structure: each H2 is a
+// chapter (a clickable label), and the H3s that follow it become its indented
+// sub-links. No per-post configuration — add or rename a heading and the TOC
+// tracks it automatically.
 ---
 <div class="reading-progress" aria-hidden="true"></div>
-
-<script type="application/json" id="toc-chapter-maps" set:html={JSON.stringify(chapterMaps)} />
 
 <details class="toc toc-inline">
   <summary>Contents</summary>
@@ -39,72 +22,53 @@ const chapterMaps: { chapter: string; sectionSlugs: string[] }[][] = [
 </aside>
 
 <script>
-  type Chapter = { chapter: string; sectionSlugs: string[] };
-
   const article = document.querySelector('article.prose');
   if (article) {
-    const heads = Array.from(article.querySelectorAll('h2')).filter((h) => h.id);
+    // All H2/H3 in document order. H2 opens a chapter; H3s nest under the
+    // open chapter as sub-links.
+    const heads = Array.from(article.querySelectorAll('h2, h3')).filter((h) => h.id);
+    const h2count = heads.filter((h) => h.tagName === 'H2').length;
 
-    if (heads.length >= 3) {
+    if (h2count >= 3) {
       const escapeHtml = (s: string) =>
         s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const anchor = (h: Element) =>
-        `<a href="#${h.id}">${escapeHtml(h.textContent ?? '')}</a>`;
 
-      // Load the chapter maps emitted by the frontmatter and pick the one that
-      // covers the most of this post's H2 slugs. Zero coverage → flat TOC.
-      let maps: Chapter[][] = [];
-      try {
-        maps = JSON.parse(document.getElementById('toc-chapter-maps')?.textContent ?? '[]');
-      } catch { maps = []; }
-
-      const headIds = new Set(heads.map((h) => h.id));
-      const coverage = (m: Chapter[]) =>
-        m.reduce((n, c) => n + c.sectionSlugs.filter((s) => headIds.has(s)).length, 0);
-      let best: Chapter[] | null = null;
-      let bestCov = 0;
-      for (const m of maps) {
-        const cov = coverage(m);
-        if (cov > bestCov) { bestCov = cov; best = m; }
-      }
-
-      // slug → chapter title, used by both rendering and scrollspy.
+      // slug → chapter title, used by scrollspy to light the parent chapter.
       const slugChapter = new Map<string, string>();
-      let html = '';
 
-      if (best && bestCov > 0) {
-        // Bucket discovered heads under their chapter, preserving DOM order
-        // within each chapter. Heads absent from the map fall into "More".
-        const slugToChapterName = new Map<string, string>();
-        for (const c of best) for (const s of c.sectionSlugs) slugToChapterName.set(s, c.chapter);
-
-        const MORE = 'More';
-        const buckets = new Map<string, Element[]>();
-        const order: string[] = [];
-        const push = (name: string, h: Element) => {
-          if (!buckets.has(name)) { buckets.set(name, []); order.push(name); }
-          buckets.get(name)!.push(h);
-          slugChapter.set(h.id, name);
-        };
-        // Seed order from the map so empty chapters are skipped but present
-        // ones keep the authored sequence.
-        for (const c of best) if (c.sectionSlugs.some((s) => headIds.has(s))) {
-          if (!buckets.has(c.chapter)) { buckets.set(c.chapter, []); order.push(c.chapter); }
+      // Group the flat heading list into chapters: an H2 starts a new chapter,
+      // subsequent H3s attach to it. A leading H3 before any H2 (unusual) opens
+      // its own chapter so nothing is dropped.
+      type Group = { h2: Element | null; subs: Element[] };
+      const groups: Group[] = [];
+      for (const h of heads) {
+        if (h.tagName === 'H2') {
+          groups.push({ h2: h, subs: [] });
+        } else {
+          if (groups.length === 0) groups.push({ h2: null, subs: [] });
+          groups[groups.length - 1].subs.push(h);
         }
-        for (const h of heads) push(slugToChapterName.get(h.id) ?? MORE, h);
-
-        html = order
-          .map((name) => {
-            const links = (buckets.get(name) ?? []).map(anchor).join('');
-            return `<div class="toc-chapter"><p class="toc-chapter-label" data-chapter="${escapeHtml(
-              name,
-            )}">${escapeHtml(name)}</p><div class="toc-sections">${links}</div></div>`;
-          })
-          .join('');
-      } else {
-        // Flat TOC: no matching chapter map (e.g. a different post).
-        html = heads.map(anchor).join('');
       }
+
+      const html = groups
+        .map((g) => {
+          const label = g.h2
+            ? `<a class="toc-chapter-label" href="#${g.h2.id}" data-chapter="${escapeHtml(
+                g.h2.id,
+              )}">${escapeHtml(g.h2.textContent ?? '')}</a>`
+            : '';
+          const chapterKey = g.h2 ? g.h2.id : (g.subs[0]?.id ?? '');
+          if (g.h2) slugChapter.set(g.h2.id, chapterKey);
+          const subs = g.subs
+            .map((h) => {
+              slugChapter.set(h.id, chapterKey);
+              return `<a href="#${h.id}">${escapeHtml(h.textContent ?? '')}</a>`;
+            })
+            .join('');
+          const subsBlock = subs ? `<div class="toc-sections">${subs}</div>` : '';
+          return `<div class="toc-chapter">${label}${subsBlock}</div>`;
+        })
+        .join('');
 
       document.querySelectorAll('.toc-nav').forEach((nav) => { nav.innerHTML = html; });
       document.querySelectorAll('.toc').forEach((t) => t.classList.add('is-visible'));

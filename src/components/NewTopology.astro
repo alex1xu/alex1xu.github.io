@@ -19,8 +19,8 @@ const gatewayY = 40, ingressY = 108, jY = 176, egressY = 250;
 const jH = 38;
 const engineY = 94, engineH = 64;
 const engineCy = engineY + engineH / 2;
-// right output column: projection (top, feeds egress) and market-data (below it)
-const projY = 88, mdY = 148;
+// right output column: market-data (top) and projection (below it, feeds egress)
+const mdY = 88, projY = 148;
 ---
 <figure class="chart">
   <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v2 topology as a left-to-right pipeline. WebSocket clients feed a gateway and an ingress-plus-sequencer task. Ingress hands commands over an SPSC ring to a single dedicated engine thread, the only writer, no locks. The engine publishes over an SPMC broadcast ring to a projection task and a separate 20Hz market-data feed. The projection routes events to an egress task, which delivers to the clients. A journal write-ahead log tees off ingress before the engine and never gates it.">
