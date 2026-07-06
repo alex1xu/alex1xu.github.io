@@ -11,9 +11,6 @@ const { url } = Astro.props;
     <path d="M12 3v12" />
     <path d="M8 7l4-4 4 4" />
   </svg>
-  <svg class="icon-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
 </button>
 
 <script>
@@ -35,20 +32,8 @@ const { url } = Astro.props;
         document.execCommand('copy');
         ta.remove();
       }
-      const share = btn.querySelector<SVGElement>('.icon-share');
-      const check = btn.querySelector<SVGElement>('.icon-check');
       btn.classList.add('copied');
-      if (share && check) {
-        share.hidden = true;
-        check.hidden = false;
-      }
-      setTimeout(() => {
-        btn.classList.remove('copied');
-        if (share && check) {
-          share.hidden = false;
-          check.hidden = true;
-        }
-      }, 1500);
+      setTimeout(() => btn.classList.remove('copied'), 1500);
     });
   }
 </script>
