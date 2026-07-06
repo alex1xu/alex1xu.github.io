@@ -1,34 +1,39 @@
 ---
 // v2 architecture: clients (WS) → tokio tasks → ONE dedicated engine OS thread (single writer,
 // no locks) → SPMC/broadcast out → projection + market-data (20Hz). Journal WAL tees off ingress
-// without gating the engine. SPSC ring in, SPMC ring out.
-const W = 640, H = 340;
+// (before the engine) without gating it. SPSC ring in, SPMC ring out.
+const W = 640, H = 316;
 // column x-centers
-const colClients = 66;
-const colTasks = 232;
-const colEngine = 400;
+const colClients = 62;
+const colTasks = 224;
+const colEngine = 398;
 const colOut = 574;
 const bw = 118, bwEng = 124, bwSm = 108;
 // tokio task boxes
-const tasks = ['gateway', 'ingress + sequencer', 'egress'];
-const taskTop = 70, taskH = 40, taskGap = 14;
-const engineY = 128, engineH = 76;
+const tasks = ['gateway', 'ingress + seq', 'egress'];
+const taskTop = 60, taskH = 40, taskGap = 16;
+const engineY = 116, engineH = 76;
 const engineCx = colEngine, engineCy = engineY + engineH / 2;
+// ingress row (2nd task) center — the anchor for SPSC-in and the journal tee
+const ingressCy = taskTop + 1 * (taskH + taskGap) + taskH / 2;
+const egressCy = taskTop + 2 * (taskH + taskGap) + taskH / 2;
+// journal box, directly below the ingress column, clearly a pre-engine branch
+const jY = 258, jH = 40;
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v2 topology: WebSocket clients feed tokio tasks (gateway, ingress plus sequencer, egress). Ingress hands commands over an SPSC inbound ring to a single dedicated engine OS thread — one writer, no locks — which publishes over an SPMC broadcast outbound ring to projection and a 20Hz market-data feed back to egress. A journal write-ahead-log tees off ingress on a branch that does not gate the engine.">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v2 topology: WebSocket clients feed tokio tasks (gateway, ingress plus sequencer, egress). Ingress hands commands over an SPSC inbound ring to a single dedicated engine OS thread — one writer, no locks — which publishes over an SPMC broadcast outbound ring to a projection task and a 20Hz market-data feed; the projection drives egress back to clients. A journal write-ahead-log tees off ingress before the engine on a branch that does not gate it.">
     <defs>
       <marker id="nt-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
       <marker id="nt-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
     </defs>
 
-    {/* clients */}
-    <rect x={colClients - bw / 2} y={taskTop + taskH} width={bw} height={taskH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
-    <text x={colClients} y={taskTop + taskH + 18} text-anchor="middle" class="btitle">clients</text>
-    <text x={colClients} y={taskTop + taskH + 32} text-anchor="middle" class="bsub">WebSocket</text>
+    {/* clients — aligned with the ingress row */}
+    <rect x={colClients - bw / 2} y={ingressCy - taskH / 2} width={bw} height={taskH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={colClients} y={ingressCy - 3} text-anchor="middle" class="btitle">clients</text>
+    <text x={colClients} y={ingressCy + 13} text-anchor="middle" class="bsub">WebSocket</text>
 
     {/* tokio tasks column */}
-    <text x={colTasks} y={taskTop - 16} text-anchor="middle" class="colttl">tokio tasks</text>
+    <text x={colTasks} y={taskTop - 18} text-anchor="middle" class="colttl">tokio tasks</text>
     {tasks.map((t, i) => {
       const y = taskTop + i * (taskH + taskGap);
       return (
@@ -39,8 +44,8 @@ const engineCx = colEngine, engineCy = engineY + engineH / 2;
       );
     })}
 
-    {/* clients → tasks */}
-    <line x1={colClients + bw / 2} y1={taskTop + taskH + taskH / 2} x2={colTasks - bw / 2 - 3} y2={taskTop + taskH + taskH / 2} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#nt-arr)" />
+    {/* clients → ingress (submit) */}
+    <line x1={colClients + bw / 2} y1={ingressCy} x2={colTasks - bw / 2 - 3} y2={ingressCy} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#nt-arr)" />
 
     {/* engine thread (highlight) */}
     <rect x={colEngine - bwEng / 2} y={engineY} width={bwEng} height={engineH} rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" />
@@ -49,40 +54,34 @@ const engineCx = colEngine, engineCy = engineY + engineH / 2;
     <text x={engineCx} y={engineCy + 22} text-anchor="middle" class="bsub acc">one writer · no locks</text>
 
     {/* ingress → SPSC in → engine */}
-    {(() => { const iy = taskTop + 1 * (taskH + taskGap) + taskH / 2; return (
-      <g>
-        <line x1={colTasks + bw / 2} y1={iy} x2={colEngine - bwEng / 2 - 3} y2={engineCy} stroke="var(--accent)" stroke-width="1.8" marker-end="url(#nt-arr-acc)" />
-        <text x={(colTasks + bw / 2 + colEngine - bwEng / 2) / 2} y={(iy + engineCy) / 2 - 6} text-anchor="middle" class="ring">SPSC in</text>
-      </g>
-    ); })()}
+    <line x1={colTasks + bw / 2} y1={ingressCy} x2={colEngine - bwEng / 2 - 3} y2={engineCy} stroke="var(--accent)" stroke-width="1.8" marker-end="url(#nt-arr-acc)" />
+    <text x={(colTasks + bw / 2 + colEngine - bwEng / 2) / 2 - 4} y={engineY - 8} text-anchor="middle" class="ring">SPSC in →</text>
 
     {/* engine → SPMC out → out column */}
     <line x1={colEngine + bwEng / 2} y1={engineCy} x2={colOut - bwSm / 2 - 3} y2={engineCy} stroke="var(--accent)" stroke-width="1.8" marker-end="url(#nt-arr-acc)" />
-    <text x={(colEngine + bwEng / 2 + colOut - bwSm / 2) / 2} y={engineCy - 8} text-anchor="middle" class="ring">SPMC out</text>
+    <text x={(colEngine + bwEng / 2 + colOut - bwSm / 2) / 2} y={engineY - 8} text-anchor="middle" class="ring">SPMC out →</text>
 
     {/* out column: projection + market-data */}
-    <rect x={colOut - bwSm / 2} y={engineY - 6} width={bwSm} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
-    <text x={colOut} y={engineY + 16} text-anchor="middle" class="btask">projection</text>
+    <rect x={colOut - bwSm / 2} y={engineY - 4} width={bwSm} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={colOut} y={engineY + 18} text-anchor="middle" class="btask">projection</text>
     <rect x={colOut - bwSm / 2} y={engineY + 44} width={bwSm} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
-    <text x={colOut} y={engineY + 60} text-anchor="middle" class="btask">market-data</text>
-    <text x={colOut} y={engineY + 74} text-anchor="middle" class="bsub">20 Hz</text>
+    <text x={colOut} y={engineY + 62} text-anchor="middle" class="btask">market-data</text>
+    <text x={colOut} y={engineY + 76} text-anchor="middle" class="bsub">20 Hz</text>
 
-    {/* market-data → egress (feedback) */}
-    {(() => { const ey = taskTop + 2 * (taskH + taskGap) + taskH / 2; return (
-      <path d={`M${colOut - bwSm / 2},${engineY + 64} Q${colTasks + bw / 2 + 40},${ey + 74} ${colTasks + bw / 2 + 3},${ey}`} fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
-    ); })()}
+    {/* projection → egress task (delivery), from the projection's left edge, under the engine */}
+    <path d={`M${colOut - bwSm / 2},${engineY + 16} C${colEngine},${egressCy + 26} ${colTasks + bw / 2 + 40},${egressCy + 26} ${colTasks + bw / 2 + 3},${egressCy}`} fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
+    <text x={colEngine} y={egressCy + 44} text-anchor="middle" class="note">deliver to 250 client lanes</text>
 
-    {/* journal WAL tee off ingress (does NOT gate engine) */}
-    {(() => { const iy = taskTop + 1 * (taskH + taskGap) + taskH / 2; return (
-      <g>
-        <line x1={colTasks} y1={iy + taskH / 2} x2={colTasks} y2={H - 62} stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
-        <rect x={colTasks - 74} y={H - 60} width={148} height={38} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
-        <text x={colTasks} y={H - 44} text-anchor="middle" class="btask">journal (WAL)</text>
-        <text x={colTasks} y={H - 30} text-anchor="middle" class="bsub">tee · does not gate engine</text>
-      </g>
-    ); })()}
+    {/* egress → clients */}
+    <line x1={colTasks - bw / 2 - 3} y1={egressCy} x2={colClients + bw / 2} y2={ingressCy + taskH / 2 + 6} stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
+
+    {/* journal WAL tees off ingress, before the engine, and does not gate it */}
+    <line x1={colTasks} y1={ingressCy + taskH / 2} x2={colTasks} y2={jY - 2} stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
+    <rect x={colTasks - 82} y={jY} width={164} height={jH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
+    <text x={colTasks} y={jY + 17} text-anchor="middle" class="btask">journal (WAL)</text>
+    <text x={colTasks} y={jY + 31} text-anchor="middle" class="bsub">tees off ingress · never gates the engine</text>
   </svg>
-  <figcaption>A single dedicated engine thread is the only writer of book state, so ordering is deterministic and no locks are needed; commands arrive over an SPSC ring and results leave over an SPMC broadcast, and the journal WAL tees off ingress on a branch that never blocks the engine's hot path.</figcaption>
+  <figcaption>A single dedicated engine thread is the only writer of book state, so ordering is deterministic and no locks are needed. Commands arrive over an SPSC ring and results leave over an SPMC broadcast to the projection, which delivers to per-client lanes; the journal tees off ingress <em>before</em> the engine, so a command is recorded before it can match, on a branch that never blocks the hot path.</figcaption>
 </figure>
 
 <style>
@@ -101,4 +100,5 @@ const engineCx = colEngine, engineCy = engineY + engineH / 2;
   .chart :global(.bsub.acc) { fill: var(--accent); }
   .chart :global(.colttl) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); letter-spacing: 0.04em; }
   .chart :global(.ring) { font-size: 10.5px; fill: var(--accent); font-family: var(--font-mono); }
+  .chart :global(.note) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
 </style>
