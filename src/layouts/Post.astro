@@ -17,8 +17,9 @@ const slug = Astro.url.pathname.replace(/\/$/, '').split('/').pop() ?? '';
 const formatted = new Date(date).toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric',
 });
+const isoDate = new Date(date).toISOString();
 ---
-<Base title={title} description={description}>
+<Base title={title} description={description} type="article" publishedTime={isoDate}>
   <ReadingAids />
   <Hero page="blog" />
   <a href="/blog" class="back-link">← Blog</a>

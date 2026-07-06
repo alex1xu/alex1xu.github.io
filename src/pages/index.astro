@@ -1,6 +1,16 @@
 ---
 import Base from '../layouts/Base.astro';
 import Hero from '../components/Hero.astro';
+import ShareButton from '../components/ShareButton.astro';
+import { getCollection } from 'astro:content';
+
+const recentPosts = (await getCollection('blog'))
+  .sort((a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf())
+  .slice(0, 3);
+
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 const experience = [
   { role: 'Software Engineer Intern', org: 'Databricks', meta: 'May 2026 – Aug 2026', logo: '/logos/databricks_logo.jpeg' },
@@ -37,6 +47,12 @@ const courses = [
 ---
 <Base>
   <Hero page="home" />
+
+  <p class="home-intro">
+    I study CS at UC Berkeley and build systems close to the hardware. Right now I'm spending
+    my nights going deep on ML systems — GPU kernels, distributed training, and inference — and
+    <a href="/blog">writing up</a> what I learn.
+  </p>
 
   <section class="section">
     <p class="section-title">Experience</p>
@@ -79,4 +95,22 @@ const courses = [
       ))}
     </ul>
   </section>
+
+  {recentPosts.length > 0 && (
+    <section class="section">
+      <div class="section-head">
+        <p class="section-title">Writing</p>
+        <a class="section-more" href="/blog">All posts →</a>
+      </div>
+      <ul class="post-list">
+        {recentPosts.map((post) => (
+          <li class="post-item">
+            <span class="post-date">{formatDate(post.data.date)}</span>
+            <a href={`/blog/${post.id}`} class="post-title">{post.data.title}</a>
+            <ShareButton url={`/blog/${post.id}`} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
 </Base>

@@ -65,14 +65,6 @@ const bestIdx = slots.findIndex((s) => s.cent === best);
 </figure>
 
 <style>
-  .chart { margin: 1.75rem 0; }
-  .chart svg { width: 100%; height: auto; display: block; }
-  .chart figcaption {
-    font-size: 0.82rem;
-    color: var(--muted);
-    margin-top: 0.6rem;
-    line-height: 1.5;
-  }
   .chart :global(.cent) { font-size: 12px; fill: var(--muted); font-family: var(--font-mono); }
   .chart :global(.cent.best) { fill: var(--accent); font-weight: 600; }
   .chart :global(.axttl) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
