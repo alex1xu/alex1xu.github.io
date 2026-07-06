@@ -1,8 +1,7 @@
 ---
-// The ablation payoff: what each v2 design choice is worth, measured by
-// regressing exactly one thing and replaying an identical command stream.
-// Bars are the THROUGHPUT slowdown factor when the choice is removed — the
-// precise signal (latency is power-of-two bucketed, so it's not plotted here).
+// What each v2 optimization is worth, measured against the alternative it
+// replaced on an identical replay stream. Bars are the THROUGHPUT factor between
+// the two (latency is power-of-two bucketed, so it's not plotted here).
 // Allocation dominates: no-hot-path-allocation is the point of the whole chart.
 const data = [
   { label: 'no hot-path allocation', factor: 5.3, kind: 'primary',
@@ -48,7 +47,7 @@ const ticks = [1, 2, 5, 10, 20, 50];
       );
     })}
   </svg>
-  <figcaption>What each design choice is worth, measured by undoing exactly one and replaying the same 5M-command stream (all cells returned a byte-identical 2,706,139 fills). Bars are the <em>throughput</em> slowdown when the choice is removed, on a log axis — the precise signal. The array shape everyone diagrams is worth ×1.12; not allocating on the hot path is worth ×5.3. The famous trick is the small lever.</figcaption>
+  <figcaption>Each optimization measured against the alternative it replaced, on the same 5M-command replay (every configuration returned a byte-identical 2,706,139 fills, so the difference is only speed). Bars are the <em>throughput</em> factor on a log axis. The array shape everyone diagrams is worth ×1.12. Not allocating while matching is worth ×5.3. The famous trick is the small lever.</figcaption>
 </figure>
 
 <style>
