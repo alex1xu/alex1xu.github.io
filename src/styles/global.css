@@ -195,8 +195,8 @@ p { margin-bottom: 1rem; }
 
 /* Home intro line under the hero. */
 .home-intro {
-  font-size: 1.02rem;
-  line-height: 1.7;
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--fg);
   margin-bottom: 2.75rem;
 }
