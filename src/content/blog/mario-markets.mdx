@@ -26,13 +26,14 @@ I sized it for the event, estimating roughly 150 people trading at maybe ten ord
 The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2).
 
 <Callout type="lesson" title="TL;DR">
-The first version, the Python exchange that ran the competition, saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was pure queueing delay — orders piled up and p99 climbed into the tens of seconds. The rewrite accepts about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and never silently drops a message on a client's reliable lane — a client that can't keep up is evicted instead. That's a roughly 60–70× gap, though the two ran on different hardware, so I hold the number loosely.
+The first version, the Python exchange that ran the competition, saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was pure queueing delay — orders piled up and p99 climbed into the tens of seconds. The Rust rewrite handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap, though the two ran on different hardware, so I hold that number loosely.
 
-Three things I didn't expect:
+Four things I didn't expect:
 
-- **The speedup came from the design, not the language.** I measured each v2 optimization against its alternative. The dominant one was **not allocating while matching** — ×5.3 throughput and ×64 tail latency. The array-shaped order book everyone diagrams was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk.
-- **Speed and correctness pushed the same way.** The single-writer design that made matching fast is the same thing that made it race-free and deterministic, and determinism is what let me test the money path against an independent reference on every input.
-- **My own tooling lied to me.** A load test I trusted was measuring itself, not the server, and it cost me weeks before I caught it.
+- **The speedup came from the design, not the language.** I measured each v2 optimization against its alternative on an identical replay. The dominant one was **not allocating while matching** — ×5.3 throughput and ×64 tail latency. The array-shaped order book everyone diagrams was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk. The thing you'd put on a slide was the small lever.
+- **Speed and correctness were the same decision.** The single writer that made matching fast is what made it race-free and deterministic, and determinism is what let me test the money path against an independent reference book on every command — a 600-case differential harness plus replay, so a bug shows up as a divergence, not a wrong number I have to notice.
+- **The engine was never the bottleneck.** At saturation it idled while a single-threaded egress path — delivering fills back to 250 clients — set the ceiling. Finding that meant taking the engine off the wire to measure it alone, then ruling out my own load generator with a second one across three machines.
+- **My own tools lied to me, twice.** A load test that shared a core with its result-draining measured itself instead of the server; later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both cost me days, and catching them is most of what I actually learned.
 </Callout>
 
 ## What the traders were actually betting on
@@ -192,18 +193,14 @@ v1 ran the actual event. 150 traders, four racer-markets a race, standings on th
 | Correctness | trusted on the day, thinly tested | 517 tests, 600-case differential + replay |
 | Risk model | ±100 position limit, bots exempt | collateralized worst-case loss |
 | Measured perf | ~150–286/s, p99 28–78 s | ~18k acked at 20k offered, p99 33 µs; 630k+/s in-process |
-| Bottleneck | engine, at a few hundred/s | single-threaded egress fan-out, not the engine |
+| Bottleneck | engine, at a few hundred/s | single-threaded egress routing, not the engine |
 
 The next move is the sharded projection. Until it's split across cores, the engine's real single-core wire ceiling stays invisible, because egress binds first.
 
-A few things I'll carry into the next system like this.
+A few things stuck with me from building this.
 
-**Decide what to measure before you build the thing that measures it.** I wrote the load generator to answer "how many orders a second," and it answered that while quietly hiding where the time went. The numbers I actually needed — per-stage latency on one clock, ring depths, eviction counts — I bolted on after each was already a mystery. Next time the metrics come first, because the shape of the instrumentation decides which questions you can even ask.
+The load generator was the part I got most wrong, and I got it wrong the same way twice — it shared a core with its own result-draining and throttled itself, then later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool was measuring itself, not the system, and both cost me days. I'd build the measurement side first now, and design it to run out of the system's way, because a benchmark that perturbs what it measures is worse than no benchmark.
 
-**The measurement rig is part of the system, and it fails the same ways the system does.** A load generator sharing a core with its own result-draining throttled itself and looked like a slow server. `perf` slowed the thread it was measuring and moved the bottleneck. Both are the same mistake — treating the tool as a neutral observer — and both cost me days. I now assume the instrument perturbs the thing until I've shown it doesn't.
+The single writer and the sequence number weren't only about speed. They're what made the engine a pure function of its input, which is what let `RefBook` check the fast book on every command and let a replay reproduce a round exactly. Once correctness was that cheap to check, I could rewrite the hot path and know in seconds if I'd broken it — every optimization here was safe to try only because that was true first.
 
-**Testability is a design property, not a phase.** The single writer and the deterministic sequence number weren't chosen for speed alone; they're what let a test replay a stream and assert on an exact result, and what let `RefBook` check the fast book on every input. When correctness is cheap to check, you change the hot path freely, because a regression surfaces in seconds. Every optimization in this post was safe to try only because that harness existed first.
-
-**Measure the optimization you're about to be proud of.** I was sure the array-shaped book was the win. It was worth 12%. Not allocating, the part I nearly skipped writing about, was worth 5.3×. The win you can draw on a whiteboard is rarely the one that dominates the profile, and the only way to know is to break each piece and watch the clock.
-
-The [code is on GitHub](https://github.com/alex1xu/orderbook-v2). Clone it, run the same harness, and you'll get the same plots — the single-box ones, at least, since the multi-box numbers need four machines. When I shard that projection and finally watch the engine top out on the wire instead of the fan-out, that's the next post.
+And I was sure the array-shaped book was the win. It was worth 12%. Not allocating, the part I almost didn't write about, was worth 5.3×. The thing you'd put on a slide is rarely the thing the profile cares about, and I only know which was which because I broke each one and watched the clock.
