@@ -17,13 +17,15 @@ import V1V2SideBySide from '../../components/V1V2SideBySide.astro';
 import HotPath from '../../components/HotPath.astro';
 import EgressProfile from '../../components/EgressProfile.astro';
 
-This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets: competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event. The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2).
+This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets: competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event. 
 
 I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load — peak throughput during the competition stayed under 1,000 orders a second — it worked, but not well. At the loudest moments of a race the latency got bad for some players: they'd fire an order and wait seconds to see it land. So over the following months I built a second version with three goals:
 
 1. **No lag** at that load, with room to grow well past it.
-2. **A provably correct engine** — fair and durable — that I could trust by construction, not by hoping it held on the day.
-3. **A design I could extend** with a new game each year without touching the engine code, and eventually let competitors run automated trading strategies, which will hit the book far harder than any human can.
+2. **A provably correct engine** that gurantees fairness and durability. [or maybe should say built to be tested for fairness durability...something like that]
+3. **A design I could extend** with a new game each year without touching the engine code, and eventually let competitors run automated trading strategies, which will require far higher loads.
+
+The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2).
 
 <Callout type="lesson" title="TL;DR">
 The first version, the Python exchange that ran the competition, saturated south of **300 accepted orders a second**, and past that its submit-to-fill latency was pure queueing delay: orders piled up and p99 climbed into the tens of seconds. The rewrite accepts about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and never drops a message on a client's reliable lane. That's a roughly 60–70× gap, though the two ran on different hardware, so I hold that number loosely.
@@ -59,12 +61,12 @@ Each layer I added around the matching core, believing it would make things fast
 
 - **The order book itself.** It started as a `SortedDict`, a balanced tree keyed by price. Simple, and it worked. I later replaced it with something that fit the problem better (more in v2).
 - **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load — they contend for the same event loop — so I split it into a control plane and a separate gateway.
-- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. The tradeoff I took knowingly: a crash mid-round loses the round, since the durable copy only exists at the end. For a party game where the fallback is re-running the race, that was acceptable.
+- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. The tradeoff I took knowingly here was that a crash loses the round, since the durable copy only exists at the end. For this live event, where the fallback is re-running the race (each only a few minutes), that was acceptable.
 - **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines with serialized access to the shared state.
 
 ## Where version one broke down
 
-The visible problem was speed, so before the event I load-tested v1 — and my load testing turned out to be the weakest part of the whole effort. I aimed for 1,500 aggregate orders a second (150 users at ~10/s each, the load I'd designed for) and got a *two-front* failure I couldn't cleanly tell apart.
+The visible problem was speed, so throughout the development process before the event I load-tested v1. I aimed for 1,500 aggregate orders a second (150 users at ~10/s each, the load I'd designed for) and [here make it clear the load tester was incorrect and insufficient metrics so] got a *two-front* failure I couldn't cleanly tell apart [or maybe reword, one hid the other].
 
 The first front was my own load generator. I'd written it as a single Python process on one asyncio event loop, opening 200-plus WebSocket connections, firing HTTP order submissions, and draining the inbound flood of book updates and trade notifications, all on one core. It was also closed-loop: each simulated user awaited its own HTTP response before sending the next order. So when the server slowed down, my client's send rate collapsed with it and throttled itself to 10–20% of target. It was measuring its own ceiling, not the exchange's.
 
@@ -72,27 +74,43 @@ The second front was underneath: the server was also saturating. At the sub-300 
 
 <TwoFrontWall />
 
-The client could offer ~150–300/s and the server saturated at ~286/s, so the two ceilings sat on top of each other and I couldn't separate them. (Bandwidth wasn't the issue — WebSocket traffic peaked around 3.7 MB/s.) The generalizable lesson: a load generator that shares a core with its own result-draining, and blocks on each response, is part of the system under test, so it measures the coupled pair, not the server. To measure the server you have to make the generator independent of it — open-loop, and eventually on separate machines — so the thing you're measuring can't throttle your measurement.
+[need to edit the following three paragraphs]
 
-Speed was the front I could see. Underneath it was a quieter problem: v1 gave me almost no way to know it hadn't corrupted itself, and both the load-testing gap and the correctness gap came from the same source — reasonable shortcuts taken on a deadline that each left a seam.
+The client could offer ~150–300/s and the server saturated at ~286/s, so the two ceilings sat on top of each other and I couldn't separate them. (Bandwidth wasn't the issue — WebSocket traffic peaked around 3.7 MB/s.) I learned that a load generator that shares a core with its own result-draining, and blocks on each response, is part of the system under test, so it measures the coupled pair, not the server. To measure the server you have to make the generator independent of it — open-loop, and on separate machines — so the thing you're measuring can't throttle your measurement.
 
-Durability was the sharpest. During a round v1 matched in memory and persisted only at settlement, so a crash lost the round, and settlement then read state from two places that were supposed to agree and didn't quite. The rest were the same shape:
-
+Speed was the front I could see. [stop using so many colons like this] Underneath it was a quieter problem: v1 gave me almost no way to know it hadn't corrupted itself, and both the load-testing gap and the correctness gap came from reasonable shortcuts taken on a deadline that each left a seam:
+ - During a round v1 matched in memory and persisted only at settlement, so a crash lost the round, and settlement then read state from two different places. 
 - The Redis control bus carried schema-less, unacknowledged messages, so a malformed or dropped command failed silently instead of being rejected at the boundary.
 - A per-endpoint flag let some reads answer from cache and some from Postgres, which could disagree.
 - The sharded fanout shared a sequence-tracking map that needed careful locking to stay ordered.
 
-Same story every time: a seam, not the core. So the pattern I took into v2 was to stop adding seams around the matching core — one source of truth instead of a cache and a database that can diverge, one typed transport instead of a bus with no schema, and bounded queues with real backpressure instead of an unbounded backlog that hides saturation until it's catastrophic.
+So the pattern I took into v2 was to stop adding seams around the matching core and to maintain one source of truth instead of a cache and a database that can diverge, one typed transport instead of a bus with no schema, and bounded queues with real backpressure instead of an unbounded backlog that hides saturation until it's catastrophic.
 
 ## Version two: one thread, no locks
+
+[this diagram still doesnt make sense for the v2 side, it says SPMC out and the arrow points to blank space on top of the journal (WAL). are you msising a compoent here? generally ensure the svg is actualyl rendering how you expect aslo remove the wording that says durable in intent and one fragility point]
 
 <V1V2SideBySide />
 
 Every v1 correctness bug traced back to two components disagreeing about shared state. The cleanest way to eliminate that class of bug is to not have shared mutable state at all, so v2 gives the entire round to **one engine thread**: one OS thread owns every order book and every wallet, does all the mutation, and never takes a lock, because nothing else ever touches that state while it's matching.
 
+[stop saying by onsturction, by intent etc]
+
 The obvious objection is that a single writer caps throughput at one core. That's the right question to ask, and here the numbers make it a non-issue: one core matches hundreds of thousands of orders a second (measured below), and the event needs a few thousand, so the ceiling sits orders of magnitude above the load. I'm trading throughput I don't need for two things I do: no locks and no data races by construction, and **determinism** — feed the same command sequence in and you get bit-for-bit identical output every time. Determinism is what makes the whole system testable, because a test can replay a stream and assert on an exact result. In v1, "who traded first" depended on which sharded worker happened to see a message first. In v2 a single ingress task stamps every command with a sequence number the instant it arrives, and that number is the only clock that matters. Price-time priority is meaningless if two components disagree about the time, so I made sure there was only one clock to disagree about.
 
-Commands reach that thread over a lock-free single-producer/single-consumer ring, and events leave over another. The engine busy-spins reading its inbound ring — no async runtime, no scheduler, no futures, just a thread in a loop — because at the latencies I care about, the microseconds a scheduler spends parking and waking a thread are the whole budget. A hand-rolled lock-free ring is the kind of thing that's subtly wrong for months, so I model-check it rather than trust my reading of it (below).
+Commands reach that thread over a lock-free single-producer/single-consumer ring, and events leave over another. The engine busy-spins reading its inbound ring — no async runtime, no scheduler, no futures, just a thread in a loop — because at the latencies I care about, the microseconds a scheduler spends parking and waking a thread are the whole budget. 
+
+[present this chnge to the array ladder as a design choice over the old sorteddict, present your metrics here direcrlt, and not as abblations. you can make each of these optimizations like a subsection and go over the reasoninig from first principles why we did it, measurement.  before you do these, i think it actually makes more sense after you cover the general design of v2 (with testability in mind), to go into proving it correct, and then the optimizaitons (because at this poitn we already know the teting harness). basically we should not be presenting the benchmarks as ablations. just present it as benchmarks i did to measure each optimizaiton]
+
+[you still need large rewrite. voice is not correct. my writing style is direct. i dont like your sentence structure and vobaulary use. i especially dont like your use of so many semicolons and colons, though some when needed are okay]
+
+[again we should always be subtly signaling my design, thinking, reasoning, and engineering skills throughout. the total blog is still slightly too long, maybe the v2 parts (second half of blog) is too verbose and can be made more concise in some places, try not to repeat information unless its in a section that requires it.]
+
+[also add more sections to roganize and can have more formatting for text aside from jsut big paragraphs. i think big headings should be version one, version two (this goes over arhicteuctre and such, need one subheading for testing), optimizaitons, wrapping up]
+
+[remove the whole diagram for v1 vs v2 saturation and acked, its not meaningful]
+
+[also move the diagram for the v2 design into the earlier relevant section. you also need ot fix it, currently the ingress + seq line to journal (WAL) goes through egress (overlapping), and projection line to egress is also messy. figure out how to lay this out clearnyl such that thigns dont overlap. one possible reording is to move projection below market-data and then move egree below journal (WAL). also what does deliver to 250 client lanes mean? you can delete that. ]
 
 **The book is a flat array, because the price domain is bounded.** Prices live on the fixed 1–99 cent ladder, so a level is just an integer in `[1, 99]`, which means a level is an array index. A general exchange uses a tree because its prices are unbounded, but that generality is pure overhead here. A 99-slot bucket array gives O(1) indexing to a level and a short bounded scan to find the best price, with no comparisons and no pointer-chasing.
 
