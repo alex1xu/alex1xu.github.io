@@ -35,7 +35,7 @@ Four things I didn't expect:
 - **The engine was not the bottleneck.** When version 2 saturated, it idled while a single-threaded egress path that delivered fills back to 250 clients set the ceiling. I found this by taking the engine off the wire to measure it alone.
 - **My own tools lied to me twice.** The faulty version one load tester shared a core with its result-draining, making it measure itself instead of the server. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. 
 
-I learned to treat the measurement rig as part of the system under test, design for testability up front, and never trust which optimization matters until you break each one and watch the clock.
+A few lessons I learned going forwards are to benchmark each optimization in isolation, since I couldn't predict which would win or by how much. The measurement rig is part of the system and fails the same ways it does. And designing for testability up front is what made the rest safe to optimize.
 </Callout>
 
 ## How Mario Markets is played
@@ -50,7 +50,7 @@ Picture 150 laptops firing at all four books the instant a blue shell knocks the
 
 I built v1 on a deadline, with a React frontend, a FastAPI backend, a standalone Python asyncio matching engine, Redis doing double duty as the command bus and the live fanout, and Postgres as the source of truth.
 
-I built it CQRS, separating the write path (submit an order) from the read path (query your book and P&L). Order entry has to be low-latency and strictly ordered, while queries are high-volume and can tolerate a little staleness, so splitting them lets each scale indepdently.
+I built it CQRS, separating the write path (submit an order) from the read path (query your book and P&L). Order entry has to be low-latency and strictly ordered, while queries are high-volume and can tolerate a little staleness, so splitting them lets each scale independently.
 
 <OldTopology />
 
@@ -126,7 +126,7 @@ I benchmarked the flat array against the `BTreeMap` it replaced. The array bough
 
 ### No allocation while matching
 
-I though that orders which allocate on insertion were a main cause for tail latency, though I didn't directly profile this. So, I designed the exchange to hold every resting order in a pre-sized object pool, and matching relinks slots through an intrusive list instead of asking for memory.
+I thought that orders which allocate on insertion were a main cause for tail latency, though I didn't directly profile this. So, I designed the exchange to hold every resting order in a pre-sized object pool, and matching relinks slots through an intrusive list instead of asking for memory.
 
 Against the same book allocating each level on the heap, the pooled arena was worth **×5.3 throughput** and **×64 tail latency**, p99 dropping from 131 µs to 2 µs. Handing out a pre-reserved slot is bounded and constant-time every time, which is exactly why the tail collapses. I measured this on the `BTreeMap` book, so ×5.3 is the allocation cost on a tree of boxed nodes. On the flat array the multiple would differ.
 
@@ -186,6 +186,8 @@ The next move is the sharded projection. Until it's split across cores, the engi
 
 A few things stuck with me from building this.
 
-The load generator was the part I got most wrong, and I got it wrong the same way twice — it shared a core with its own result-draining and throttled itself, then later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool was measuring itself, not the system, and both cost me days. I'd build the measurement side first now, and design it to run out of the system's way.
+I stopped trusting my own ranking of optimizations. The flat-array book was the one I'd have shown off, provably O(1) against the tree's O(log n), and it was worth ×1.12 because at 99 levels the tree already fits in cache. Not allocating while matching, which doesn't appear in the algorithm at all, was worth ×5.3. Asymptotics ranked these by the wrong axis, so I benchmark each change against the alternative on an identical workload and flip one variable at a time.
 
-The single writer and the sequence number made the engine a pure function of its input, which is what let `RefBook` check the fast book on every command and let a replay reproduce a round exactly. Once correctness was cheap to check, I could apply optimizations and know it was safe.
+The load generator was the part I got most wrong, and I got it wrong the same way twice. It shared a core with its own result-draining and throttled itself, and later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool measured itself instead of the server. A measurement rig runs on the same machine and competes for the same cores, so it couples to what it measures unless you design it not to. I build the measurement side first now and keep it out of the system's way.
+
+Testability turned out to be a property of the design, not a phase after it. The single writer and the sequence number made the engine a deterministic function of its input, and I didn't pick them for testing, but that one decision made testing cheap at every level. A reference book could check the fast one on every command, replaying the journal reproduced a round exactly, and because a regression showed up in seconds I could rewrite the hot path freely. When a system is hard to test, that's usually the design telling you it has hidden state or coupling to remove first.
