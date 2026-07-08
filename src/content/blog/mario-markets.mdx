@@ -17,10 +17,10 @@ import EgressProfile from '../../components/EgressProfile.astro';
 
 This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets. Competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event.
 
-I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load — peak throughput during the competition stayed under 1,000 orders a second — it worked, but not well. At the loudest moments of a race the latency got bad for some players. They'd fire an order and wait seconds to see it land. So over the following months I built a second version with three goals:
+I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load (traders sent well under 1,000 orders a second in total during the competition) it worked, but not well. At the loudest moments of a race the latency got bad for some players. They'd fire an order and wait seconds to see it land. So over the following months I built a second version with three goals:
 
 1. **No lag** at that load, with room to grow well past it, so that new competition modes like automated trading strategies could be supported.
-2. A **provably correct, fair, and durable engine**.
+2. A **rigorously tested, fair, and durable engine**.
 3. **A design I could extend** with a new game each year without touching the engine code.
 
 The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2-public).
@@ -110,7 +110,7 @@ An intrusive list through an object pool, cached best-price cursors, and O(1) re
 
 The test feeds both books the same randomly generated command stream and, after every command, checks that they emitted the same events and hold the same resting orders. The generator draws from a tiny space of four users and a handful of order IDs, which makes crossing trades and self-trade prevention fire constantly instead of almost never, heavy on cancels, across every order type. Each step also checks invariants directly on the fast book (e.g. positions net to zero per market, reserved collateral never goes negative, the book is never crossed at rest) so a bug that keeps both event streams equal but corrupts an invariant still gets caught. Determinism makes the replay path testable the same way. The engine is a pure function of its sequenced input, and the journal records exactly that input, so replaying the log has to reproduce the round exactly.
 
-The ring has concurrent code, so I model-check it with `loom`, which explores every possible thread interleaving and asserts the consumer sees each item, in order, with nothing lost. 
+The ring has concurrent code, so I model-check it with `loom`, which explores the ring's thread interleavings and asserts the consumer sees each item, in order, with nothing lost. 
 
 ## Optimizations
 
@@ -134,7 +134,7 @@ Against the same book allocating each level on the heap, the pooled arena was wo
 
 ### Group-commit for the journal
 
-Durability off the hot path is only cheap if the `fsync` is amortized. On a real xfs disk, a `fsync` per command runs at 508 commands a second, because each one is a 2.10 ms trip to the disk. Batching 64 commands per flush runs at 32,299 a second, a **×63.5** difference.
+Durability off the hot path is only cheap if the `fsync` is amortized. On a real xfs disk, a `fsync` per command runs at 508 commands a second, since each one is a couple-millisecond trip to the disk. Batching 64 commands per flush runs at 32,299 a second, a **×63.5** difference.
 
 <AblationBars />
 
@@ -142,7 +142,7 @@ Durability off the hot path is only cheap if the `fsync` is amortized. On a real
 
 At 20,000 orders a second offered to 250 clients, the engine acks about 18,000 at an in-system p50 of 2 µs and p99 of 33 µs, with nothing lost on a client's reliable lane. The load generator counts an ack only when the frame arrives back over the socket, so that ~18k is a full round-trip rate. The ~10% gap between offered and acked isn't loss, it's cancels chasing orders that already filled and correctly rejecting. I measure on the engine's own clock, ingress stamp to emit stamp, so it's immune to skew between machines and isn't the round trip to a browser. And the load generator is open-loop, firing on a fixed schedule regardless of when replies come back, which is the fix for exactly the trap that fooled me in v1.
 
-I wanted to find where the bottleneck actually sat (without a profiler), so I took the engine off the wire and ran the matching loop in-process, pinned to one core with no network and no journal. In isolation it processes a command in p50 2.05 µs and sustains **630,000–690,000 commands a second**. That's the same ~2 µs scale as the wire run's engine clock, which means the 20k on the wire was never the engine giving out. It was idling while something downstream throttled it.
+I wanted to find where the bottleneck actually sat (without a profiler), so I took the engine off the wire and ran the matching loop in-process, pinned to one core with no network and no journal. In isolation the bare matching loop sustains **630,000–690,000 commands a second** (the durable engine is capped lower, at the ~32k/s the journal flushes). Either ceiling is far above the 20k the wire run topped out at, so the engine was never what gave out. It was idling while something downstream throttled it.
 
 Turns out it was on the output side. The engine publishes each event into an outbound ring, and a projection task drains it and routes each event to its client's lane. A fill or an ack goes to the one trader it belongs to, and round-state changes broadcast to everyone. Each reliable lane is capped, and when a client can't keep up its lane fills. Rather than drop that one message, the projection evicts the whole client, so it stops receiving live updates until it reconnects. I'd assumed the engine would eventually spin on a full outbound ring, but it never does. Across the whole ladder, `outbound_full` stayed at zero while evictions hit 250. The projection drains the ring faster than the engine fills it, so the backup is entirely downstream, at the per-client lanes.
 
@@ -182,7 +182,7 @@ Under `perf`, the saturation signature changed. `outbound_full` jumped to 1,157 
 | Measured perf | ~150–286/s, p99 28–78 s | ~18k acked at 20k offered, p99 33 µs; 630k+/s in-process |
 | Bottleneck | engine, at a few hundred/s | single-threaded egress routing, not the engine |
 
-The next move is the sharded projection. Until it's split across cores, the engine's real single-core wire ceiling stays invisible.
+The next move is the sharded projection, which the ring design already makes safe. Until it's split across cores, the engine's real single-core wire ceiling stays invisible.
 
 A few things stuck with me from building this.
 

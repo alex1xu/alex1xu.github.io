@@ -18,7 +18,7 @@ I spent a couple of weeks on this FlashAttention mini-project, starting with the
 "FlashAttention is fast" bundles two separate wins, which initially wasn't super clear to me, but building it forced them apart.
 
 - **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
-- **Going fast is the second win, and the online-softmax trick has little to do with it.** Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
+- **Going fast is the second win, and the online-softmax trick has little to do with it.** The trick is what makes the memory win possible, but it is not where the *time* goes. Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
 - **Programming is hard 😭** I spent hours debugging nothing because a kernel never launched and the GPU swapped underneath me.
 
 This is the forward pass, measured on one A100. The backward pass and the Hopper FA3/4 are left to a follow-up.
@@ -28,7 +28,7 @@ Everything here ran on a single **A100-SXM4-80GB** (108 SMs, 2.0 TB/s HBM, 312 F
 
 ## The memory wall
 
-Before writing a single kernel I wrote the naive baseline to get a better my understanding of the problem (and solution).
+Before writing a single kernel I wrote the naive baseline to better understand the problem (and the solution).
 
 <CodeCard file="naive.py">
 ```python
@@ -52,7 +52,7 @@ FlashAttention's claim is that you never have to materialize that tensor at all.
 
 <TilingSchematic />
 
-It isn't what also makes it fast! And that surprised me.
+But dropping the memory is not what makes FlashAttention fast, which surprised me.
 
 ## The algorithm in one paragraph
 
@@ -116,7 +116,7 @@ for (int j = 0; j < N; j += BLOCK_N) {
 
 Max abs error against PyTorch's `scaled_dot_product_attention` is ~1e-3 in fp16 (it works). More importantly this kernel shows tiling alone fixes the wall. It ran `N=16384` at **2.15 GB**, exactly where the naive version needed ~137 GB and died.
 
-And it runs at **~5 TFLOP/s. The naive baseline does 54.** Naive is slow on memory, but its two big matmuls go straight to cuBLAS's tensor-core kernels, which my scalar loop can't touch. So on its own, tiling for memory made the kernel **11× slower**. Turns out fitting and going fast sit on different axes! And fixing the first costs the second.
+And it runs at **~5 TFLOP/s. The naive baseline does 54.** Naive is slow on memory, but its two big matmuls go straight to cuBLAS's tensor-core kernels, which my scalar loop can't touch. So fixing the memory got me a kernel **11× slower** than naive, because I gave up the tensor cores to do it. Turns out fitting and going fast sit on different axes! And fixing the first costs the second.
 
 ## Win #2: adding tensor cores
 
@@ -190,7 +190,7 @@ I had three ideas about why a correct tensor-core kernel was still only 10% of S
 
 With a 16-wide K/V block, the per-block softmax bookkeeping runs once per 16 keys. Widen the block to 64 and it runs a quarter as often, so if the bookkeeping is the cost, a 4× wider tile should pay off big.
 
-This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. A 4× wider tile bought only ×1.44, which means most of the runtime scales with the tile too. If the bookkeeping were the cost, amortizing it 4× should theoretically pay 4×. Only getting a quarter of that tells me the real cost is in the streaming the wider tile also grew.
+This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. If the softmax bookkeeping were the cost, amortizing it over 4× the keys should have paid close to 4×. Getting a quarter of that tells me the bookkeeping was never the main cost, so the bottleneck is elsewhere.
 
 ### Idea 2: raise occupancy
 
@@ -260,7 +260,7 @@ The forward pass is correct in three versions that each fix one more thing, and 
 | WMMA, FA2 schedule (best) | 21 | tensor cores are necessary, ~10% of SDPA, not enough |
 | PyTorch SDPA (flash backend) | ~200 | the target, ~65% of the card's peak |
 
-The bar I set going in was a correct FA2-scheme kernel benchmarked against SDPA. I think The real fix is a register-resident kernel that stages K/V once and hands the tensor cores bigger, better-fed tiles, which is the `mma.sync` plus swizzled-shared-memory rewrite. I stopped short of that here. Chasing SDPA parity is probably hours of `mma.sync` tuning.
+The bar I set going in was a correct FA2-schedule kernel benchmarked against SDPA. I think the real fix is a register-resident kernel that stages K/V once and hands the tensor cores bigger, better-fed tiles, which is the `mma.sync` plus swizzled-shared-memory rewrite. I stopped short of that here. Chasing SDPA parity is probably hours of `mma.sync` tuning.
 
 The memory-wall plot only measures allocation and does not measure HBM traffic. An ideal FA kernel reads Q, K, and V about once, so its traffic is O(N), but mine re-streams all of K and V for every Q-block, so the bytes it *moves* are closer to O(N²) even though the bytes it holds stay O(N). Pinning down the traffic exactly needs the DRAM counters `ncu` gives, which I couldn't run here.
 
