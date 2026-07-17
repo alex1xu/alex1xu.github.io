@@ -2,8 +2,7 @@
 // The ss -tn snapshot that localized the wall. Peak socket-queue depth per box at the
 // 60k knee. The server's INBOUND recv-Q (orders the server hasn't read yet) balloons to
 // 126 MB while its outbound send-Q stays tiny and both loadgens drain to ~0. That single
-// picture says: server-side, inbound-throttled — the loadgen is exonerated. Raw:
-// wall-diag-60k.json.
+// picture says: server-side, inbound-throttled — the loadgen is exonerated.
 const rows = [
   { box: 'server', role: 'the exchange', recv: 126_000_000, send: 43_000, recvL: '126 MB', sendL: '43 KB', hot: true },
   { box: 'loadgen 1', role: '125 clients', recv: 31_000, send: 21_000, recvL: '31 KB', sendL: '21 KB' },

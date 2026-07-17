@@ -13,7 +13,7 @@ const W = 720, H = 250;
     <text x={38} y={54} class="lt acc">reliable lane · per client</text>
     <text x={38} y={74} class="ld">acks · fills · rejects, each stamped with a monotonic <tspan class="mono">server_seq</tspan></text>
     <text x={38} y={92} class="ld">a gap is a bug — on overflow the client is <tspan class="em">evicted</tspan>, never a message dropped</text>
-    <text x={38} y={108} class="ld dim">the ~97k order acks per second ride here</text>
+    <text x={38} y={108} class="ld dim">every order ack rides here, one per client</text>
 
     <!-- lossy lane -->
     <rect x={20} y={134} width={W - 40} height={86} rx="8" fill="var(--bg-soft)" stroke="var(--muted)" stroke-width="1.5" />

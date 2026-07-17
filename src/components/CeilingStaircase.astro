@@ -4,13 +4,11 @@
 // flat treads = a correct fix that moved it by nothing (the three null results). Two big
 // risers — decouple the journal, shard the delivery path — carry almost the whole climb.
 //
-// Values (k acked/s), pinned to artifacts. 20k = part 1's ceiling on the OLD 2-box rig, itself
-// partly co-limited by the single load box (loadtest-2026-06-02: "sustainable ≈20–25k on this
-// one-load-box rig"). 27k = the isolated 3-box pre-fix baseline — a rig+binary re-baseline, NOT a
-// fix, so it's drawn neutral (3box findings.md:46 "sustainable knee", reconfirmed seed 501). 31k =
-// market-data fan-out cut (N1 plateau 30.5–30.8k). 31k off-tokio (null). 54k journal (N3, 54.0k @
-// 60k offered). 54k Arc-share (null, 53,995→53,987). 97k shard ×4 (4box knee 97.3k; ≈85k with the
-// old load gens, 97k once fixed). 97k cap snapshot depth (null, 97.3→97.7).
+// Values (k acked/s), from the sustained load-test knees. 20k = part 1's ceiling on the old 2-box
+// rig, itself partly co-limited by the single load box. 27k = the isolated-rig pre-fix baseline — a
+// rig+binary re-baseline, NOT a fix, so it's drawn neutral. 31k = market-data fan-out cut. 31k
+// off-tokio (null). 54k journal decoupling. 54k Arc-share (null, 53,995→53,987). 97k shard ×4
+// (≈85k with the old load gens, 97k once fixed). 97k cap snapshot depth (null, 97.3→97.7).
 const pts = [
   { x: 'part 1\n(2-box)',    v: 20, kind: 'start', note: "part 1's ceiling on the old 2-box rig — itself partly limited by the single load box, not a clean server number" },
   { x: 'isolated\nrig',      v: 27, kind: 'base', note: 'moved to a fully isolated 3-box rig (different rig and binary) — a re-baseline, not a fix; this is the real number to beat' },
@@ -84,6 +82,5 @@ const risers = pts.slice(1).map((p, idx) => ({ i: idx + 1, from: pts[idx].v, to:
   .stair :global(.val) { font-size: 12px; fill: var(--muted); font-family: var(--font-mono); font-weight: 600; }
   .stair :global(.val.win) { fill: var(--accent); font-size: 13px; }
   .stair :global(.flat) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); font-style: italic; }
-  .stair :global(.rebase) { font-size: 9px; fill: var(--muted); font-family: var(--font-mono); }
   .stair :global(.leg) { font-size: 11px; fill: var(--fg); font-family: var(--font-sans); }
 </style>

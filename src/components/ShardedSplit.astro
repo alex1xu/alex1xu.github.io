@@ -1,9 +1,9 @@
 ---
 // CPU self-time split at the ~97k knee, after sharding — a clean bar breakdown, not a
 // flamegraph. The point is the shape: no single pegged consumer. Per-thread-group self-time
-// from the real capture (folded-opt4-110k-v2.txt): tokio workers 44.2% (socket-write path,
-// of which memset+memmove ≈11.5% of all samples), 4 projection shards 39.8% (balanced
-// 14.1/14.0/13.8/13.7 ×10⁹ ns ≈ 10% each), engine 16.0% (busy-spin, not work).
+// from the folded perf capture: tokio workers 44.2% (socket-write path, of which
+// memset+memmove ≈11.5% of all samples), 4 projection shards 39.8% (balanced within 3% of each
+// other, ≈10% each), engine 16.0% (busy-spin, not work).
 const rows = [
   { label: 'tokio workers ×8', sub: 'socket-write path', v: 44.2, kind: 'work',
     seg: { label: 'memset + memmove', v: 11.5 } },
