@@ -1,0 +1,38 @@
+---
+// The two egress lanes and their opposite contracts. Reliable: per-client, every ack/fill
+// carries a monotonic server_seq, a gap is a correctness bug, overflow evicts the client
+// rather than dropping. Lossy: one market-data broadcast, latest-only 20 Hz snapshots +
+// trade prints, a dropped frame self-heals on the next tick. Why batching trades and
+// capping snapshots were safe (lossy lane) but an ack could never be dropped (reliable).
+const W = 720, H = 250;
+---
+<figure class="chart lanes">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="The two egress lanes. The reliable lane is per client: every ack and fill carries a monotonic sequence number, a gap is a correctness bug, and if the lane overflows the client is evicted rather than a message dropped. The lossy lane is one market-data broadcast: latest-only 20 Hz book snapshots and trade prints, where a dropped frame self-heals on the next tick. Batching trades and capping snapshots are safe because they touch only the lossy lane; an order ack on the reliable lane can never be dropped.">
+    <!-- reliable lane -->
+    <rect x={20} y={30} width={W - 40} height={86} rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5" opacity="0.9" />
+    <text x={38} y={54} class="lt acc">reliable lane · per client</text>
+    <text x={38} y={74} class="ld">acks · fills · rejects, each stamped with a monotonic <tspan class="mono">server_seq</tspan></text>
+    <text x={38} y={92} class="ld">a gap is a bug — on overflow the client is <tspan class="em">evicted</tspan>, never a message dropped</text>
+    <text x={38} y={108} class="ld dim">the ~97k order acks per second ride here</text>
+
+    <!-- lossy lane -->
+    <rect x={20} y={134} width={W - 40} height={86} rx="8" fill="var(--bg-soft)" stroke="var(--muted)" stroke-width="1.5" />
+    <text x={38} y={158} class="lt mut">lossy lane · one broadcast to all</text>
+    <text x={38} y={178} class="ld">latest-only book snapshots at 20 Hz + trade prints</text>
+    <text x={38} y={196} class="ld">a dropped frame <tspan class="em">self-heals</tspan> on the next tick — the client sees newer state</text>
+    <text x={38} y={212} class="ld dim">batching trades and capping snapshot depth are safe here, and only here</text>
+  </svg>
+  <figcaption>Delivery splits into two lanes with opposite contracts. The <span class="acck">reliable lane</span> is per-client and sequence-numbered — a missing ack is a bug, so overload evicts a client rather than dropping its message. The <span class="mutk">lossy lane</span> is one broadcast of latest-only market data, where a dropped frame self-heals on the next 20 Hz tick. That split is why coalescing trades and capping snapshot depth cost a client nothing: they touch only the lossy lane. An order ack never rides it.</figcaption>
+</figure>
+
+<style>
+  .lanes :global(.lt) { font-size: 13px; font-family: var(--font-sans); font-weight: 700; }
+  .lanes :global(.lt.acc) { fill: var(--accent); }
+  .lanes :global(.lt.mut) { fill: var(--fg); }
+  .lanes :global(.ld) { font-size: 11.5px; fill: var(--fg); font-family: var(--font-sans); }
+  .lanes :global(.ld.dim) { fill: var(--muted); font-size: 10.5px; }
+  .lanes :global(.mono) { font-family: var(--font-mono); font-size: 10.5px; }
+  .lanes :global(.em) { font-style: italic; }
+  .lanes figcaption .acck { color: var(--accent); font-weight: 600; }
+  .lanes figcaption .mutk { color: var(--muted); font-weight: 600; }
+</style>

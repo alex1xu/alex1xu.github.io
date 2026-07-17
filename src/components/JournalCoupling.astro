@@ -1,0 +1,67 @@
+---
+// The one fix that doubled throughput, as a before/after of the admission path. Before:
+// an incoming order is written to the durable journal (a disk fsync) BEFORE it's handed
+// to the engine — so when the disk falls behind, the queue fills and new orders can't
+// enter, and the engine starves with nothing to do. After: the order goes to the engine
+// first and is teed to the journal in parallel, so a slow disk can never block admission.
+const W = 680, H = 220;
+---
+<figure class="chart jcoup">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Before and after of the order-admission path. Before: an order is written to the journal, which does a disk fsync, before reaching the engine — so a slow disk backs up the queue, blocks admission, and starves the engine. After: the order reaches the engine first and is teed to the journal in parallel, so the disk can never gate admission.">
+    <defs>
+      <marker id="jc-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
+      <marker id="jc-arr-w" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--warning)" /></marker>
+    </defs>
+
+    {/* BEFORE */}
+    <text x={20} y={22} class="ptitle warn">before — the disk gates admission</text>
+    <g transform="translate(20, 42)">
+      <rect x={0} y={20} width={70} height={40} rx="5" fill="var(--bg-soft)" stroke="var(--border)" />
+      <text x={35} y={44} text-anchor="middle" class="bt">order</text>
+
+      <rect x={130} y={20} width={90} height={40} rx="5" fill="var(--bg-soft)" stroke="var(--warning)" stroke-width="2" />
+      <text x={175} y={38} text-anchor="middle" class="bt">journal</text>
+      <text x={175} y={52} text-anchor="middle" class="bs warn">fsync ~1.9ms</text>
+
+      <rect x={280} y={20} width={90} height={40} rx="5" fill="var(--bg-soft)" stroke="var(--border)" />
+      <text x={325} y={38} text-anchor="middle" class="bt">engine</text>
+      <text x={325} y={52} text-anchor="middle" class="bs warn">starved, idle</text>
+
+      <line x1={70} y1={40} x2={128} y2={40} stroke="var(--warning)" stroke-width="1.5" marker-end="url(#jc-arr-w)" />
+      <line x1={220} y1={40} x2={278} y2={40} stroke="var(--warning)" stroke-width="1.5" marker-end="url(#jc-arr-w)" />
+      <text x={95} y={80} text-anchor="middle" class="cap warn">queue fills → blocks</text>
+      <text x={300} y={80} text-anchor="middle" class="cap warn">nothing to do</text>
+    </g>
+
+    <line x1={20} y1={135} x2={W - 20} y2={135} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+
+    {/* AFTER */}
+    <text x={20} y={158} class="ptitle acc">after — admit first, journal in parallel</text>
+    <g transform="translate(20, 172)">
+      <rect x={0} y={2} width={70} height={36} rx="5" fill="var(--bg-soft)" stroke="var(--border)" />
+      <text x={35} y={24} text-anchor="middle" class="bt">order</text>
+
+      <rect x={160} y={2} width={90} height={36} rx="5" fill="var(--bg-soft)" stroke="var(--accent)" stroke-width="2" />
+      <text x={205} y={24} text-anchor="middle" class="bt">engine</text>
+
+      <rect x={310} y={2} width={90} height={36} rx="5" fill="var(--bg-soft)" stroke="var(--border)" />
+      <text x={355} y={20} text-anchor="middle" class="bt">journal</text>
+      <text x={355} y={33} text-anchor="middle" class="bs">tee, off-path</text>
+
+      <line x1={70} y1={20} x2={158} y2={20} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#jc-arr)" />
+      <path d={`M205,2 Q205,-16 300,-16 Q355,-16 355,0`} fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#jc-arr)" />
+    </g>
+  </svg>
+  <figcaption>The change that doubled the ceiling. Before, an order was written to the durable journal — a ~1.9 ms disk <code>fsync</code>, batched — <em>before</em> it reached the matching engine, so when the disk fell behind, new orders couldn't enter and the engine sat idle with nothing to match. That directly violated the design rule that a slow journal must never gate the engine. After, the order reaches the engine immediately and is teed to the journal in parallel; the disk can fall as far behind as it likes without ever blocking admission. 64 commands per 1.9 ms <code>fsync</code> works out to ~34k/s — exactly the plateau it had been stuck at.</figcaption>
+</figure>
+
+<style>
+  .jcoup :global(.ptitle) { font-size: 12px; font-family: var(--font-sans); font-weight: 600; }
+  .jcoup :global(.ptitle.warn) { fill: var(--warning); }
+  .jcoup :global(.ptitle.acc) { fill: var(--accent); }
+  .jcoup :global(.bt) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .jcoup :global(.bs) { font-size: 9.5px; fill: var(--muted); font-family: var(--font-mono); }
+  .jcoup :global(.bs.warn) { fill: var(--warning); }
+  .jcoup :global(.cap) { font-size: 10px; fill: var(--muted); font-family: var(--font-mono); }
+  .jcoup :global(.cap.warn) { fill: var(--warning); }
+</style>
