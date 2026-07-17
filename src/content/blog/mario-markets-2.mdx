@@ -20,14 +20,13 @@ import ShardedSplit from '../../components/ShardedSplit.astro';
 <Callout type="lesson" title="TL;DR">
 I raised my exchange's ceiling from 20k to 97k orders per second through six rounds of profiling, optimizing, and load-testing. Each round was a different bottleneck.
 
-- Three fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler, and capping the market-data snapshot to ten price levels. Each did exactly what it was designed to; the knee held. The profiler's hottest item was not the constraint.
-- One fix cleared the market-data firehose — batching per-trade broadcasts into the 20 Hz tick — which nudged the knee ~27k→~31k but mattered most for killing an eviction cliff, not for throughput.
-- Two fixes roughly doubled it. One removed an `fsync` gating order admission — off-CPU work no sampling profiler ranked (~31k→~54k). The other sharded the single delivery thread across cores (~54k→~97k).
-- Once the limiter was the rig, not the server: the load generators burned more CPU parsing market data than the server spent producing it, so a run above ~80k measured the generators. The fix was to the instrument.
-- What localized the wall was `ss`, not a flamegraph: 126 MB of orders backed up unread on the server's own inbound socket, so the "16.8 ms of network latency" was the same thing as the server failing to read its own socket in time.
+- Three fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler, and capping the market-data snapshot to ten price levels. I verified each did exactly what it was designed to, but the knee held. I learned that the profiler's hottest item may not always be the constraint.
+- Batching per-trade broadcasts into 20 Hz ticks only nudged the knee ~27k→~31k, but mattered most for removing an eviction cliff.
+- Removing `fsync` gating order admission, which is off-CPU work the profiler didn't rank was a major fix (~31k→~54k). Sharding the single delivery thread across cores was also major (~54k→~97k).
+- At one point the load generators burned more CPU parsing market data than the server spent producing it and capped out at ~80k orders a second.
 </Callout>
 
-The engine, the rings, and the delivery path this post lives in:
+The exchange architecture I got to by the end of this post:
 
 <SystemDataflow />
 
@@ -35,7 +34,7 @@ The engine, the rings, and the delivery path this post lives in:
 
 ## The delivery cost wasn't where part one guessed
 
-Part one had the server on its own box, but it left two things unsettled: how much of the ~20k was the server versus my single load box, and *where* on the delivery path the cost sat. The isolated rig would answer the first; a profile under saturating load would answer the second. So I profiled, expecting the per-client message re-encode I'd flagged in part one. The profile put that path at 0.4% of CPU. The actual firehose was market data: every trade was broadcast individually to 250 receivers and written as its own frame, and broadcast delivery plus the reference-count churn on the shared buffers came to about a fifth of CPU — a third once the socket writes those frames drove are counted with it. The dropped-frame counter confirmed the volume, climbing by 6 million in 15 seconds — about 13 drops per order.
+In part one I wasn't sure how much of the ~20k ceiling was the server versus my single load box, and where on the delivery path the cost sat. So I profiled, expecting the per-client message re-encode I'd flagged in part one to be the bottleneck, however that path only came out at 0.4% of CPU. The actual firehose was market data: every trade was broadcast individually to 250 receivers and written as its own frame, and broadcast delivery plus the reference-counting on the shared buffers came to about a fifth of CPU, and a third once the socket writes those frames drove are counted with it. The dropped-frame counter showed 6 million in 15 seconds (about 13 drops per order).
 
 The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one hadn't failed; it had removed the serde layer that was masking the broadcast machinery beneath it.
 
