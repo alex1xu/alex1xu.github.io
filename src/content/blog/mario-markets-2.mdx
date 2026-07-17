@@ -1,7 +1,7 @@
 ---
 title: "Mario Markets, part 2: six rounds chasing a delivery ceiling"
 date: "2026-07-13"
-description: "The Rust exchange from part one topped out delivering fills to 250 clients. I spent about a week chasing that ceiling on an EC2 rig, through six rounds where the constraint changed character every time. Three correct fixes moved throughput by nothing, two roughly doubled it, and once the thing limiting me was my own measurement rig, not the server."
+description: "The Rust exchange from part one topped out delivering fills to 250 clients. I went through six rounds of optimization where the constraint changed every time."
 tags: ["rust", "systems", "trading", "performance", "profiling", "tokio"]
 ---
 
@@ -15,14 +15,12 @@ import TwoSidedQueue from '../../components/TwoSidedQueue.astro';
 import ShardingTopology from '../../components/ShardingTopology.astro';
 import ShardedSplit from '../../components/ShardedSplit.astro';
 
-[The first post](/blog/mario-markets) rebuilt a prediction-market exchange into a single-writer, lock-free Rust engine. The engine matched an order in about 2 microseconds and had enormous headroom, but the whole system saturated near 20,000 orders a second delivering fills and market data back out to 250 clients — a ceiling I hadn't cleanly separated from my own load rig at the time. I'd profiled it just enough to name a suspect, one pegged thread routing per-client messages, and finished the post confident the fix was to shard that thread across cores.
-
-The first careful measurement put that thread at 0.4% of the cost. That was the shape of the whole exercise: six rounds of profile, fix, and re-measure, and each time the constraint sat somewhere the last round hadn't pointed. The sharding I'd planned did roughly double the ceiling — after five other things came first.
+[The first post](/blog/mario-markets) rebuilt a prediction-market exchange into a single-writer, lock-free Rust engine. The engine matched an order in about 2 microseconds and had enormous headroom, but the whole system saturated near 20,000 orders a second delivering fills and market data back out to 250 clients.
 
 <Callout type="lesson" title="TL;DR">
-On an isolated rig — server on its own box, load driven from separate boxes over a real network — I ran a profile-fix-measure loop for six rounds. The ceiling moved most rounds, and each round it was a different kind of problem.
+I raised my exchange's ceiling from 20k to 97k orders per second through six rounds of profiling, optimizing, and load-testing. Each round was a different bottleneck.
 
-- Three correct fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler ranked highest, and capping the market-data snapshot to ten price levels. Each did exactly what it was designed to; the knee held. The profiler's hottest item was not the constraint.
+- Three fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler, and capping the market-data snapshot to ten price levels. Each did exactly what it was designed to; the knee held. The profiler's hottest item was not the constraint.
 - One fix cleared the market-data firehose — batching per-trade broadcasts into the 20 Hz tick — which nudged the knee ~27k→~31k but mattered most for killing an eviction cliff, not for throughput.
 - Two fixes roughly doubled it. One removed an `fsync` gating order admission — off-CPU work no sampling profiler ranked (~31k→~54k). The other sharded the single delivery thread across cores (~54k→~97k).
 - Once the limiter was the rig, not the server: the load generators burned more CPU parsing market data than the server spent producing it, so a run above ~80k measured the generators. The fix was to the instrument.
