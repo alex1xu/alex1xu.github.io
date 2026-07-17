@@ -21,7 +21,7 @@ I spent a couple of weeks on this FlashAttention mini-project, starting with the
 
 - **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
 - **Going fast is the second win, and the online-softmax trick has little to do with it.** The trick is what makes the memory win possible, but it is not where the *time* goes. Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
-- **The gap to SDPA wasn't where I first guessed.** I thought I was memory-bound, spending my time moving K and V. Measuring it, occupancy and the softmax both came back as non-issues, and the gap lives in the per-warp tile being too small to amortize the fixed per-block bookkeeping. The one thing I couldn't cleanly separate it from is raw bandwidth, since the profiler I'd need was blocked.
+- **The perf gap to SDPA wasn't where I first thought.** I thought I was memory-bound, spending my time moving K and V. When I measured it, occupancy and softmax both came back as non-issues. I have a new theory for the gap, but I can't cleanly test it without a profiler.
 - **Programming is hard 😭** I spent hours debugging nothing because a kernel never launched and the GPU swapped underneath me.
 
 This is the forward pass, measured on one A100. The backward pass and the Hopper FA3/4 are left to a follow-up.
@@ -197,9 +197,9 @@ This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP
 
 ### Idea 2: raise occupancy
 
-One warp per block runs at about 10 warps per SM, roughly 16% of the card's 64-warp ceiling, which looked low enough that the SMs might be starved for warps to hide latency behind. I put four warps on a block, which needed dynamic shared memory to fit.
+One warp per block runs at about 10 warps per SM, roughly 16% of the card's 64-warp ceiling, which I thought looked low enough that the SMs might be starved for warps to hide latency behind. So, I put four warps on a block, which needed dynamic shared memory in order to fit.
 
-That made it worse. Throughput **fell about 21%**, from 21 TF to ~16.6, and the bigger shared-memory footprint meant only two blocks fit per SM, so warps-per-SM went down rather than up. But four warps moved several things at once, the tile decomposition and the shared-memory use along with the occupancy, so it's a blunt test. A cleaner one is to pad the 21 TF kernel with shared memory it never reads, just to reserve the space. That lowers how many blocks fit on an SM and changes nothing else. (Occupancy is really resident warps per SM, but every block here is one warp, so blocks per SM is the same axis.)
+It made it worse! Throughput **fell about 21%**, from 21 TF to ~16.6. I think the bigger shared-memory footprint meant only two blocks fit per SM, so warps-per-SM went down rather than up. But four warps moved several things at once, the tile decomposition and the shared-memory use along with the occupancy, so it's not a clear result. A cleaner test may be to pad the 21 TF kernel with shared memory it never reads, just to reserve the space. That lowers how many blocks fit on an SM and changes nothing else. (Occupancy is really resident warps per SM, but every block here is one warp, so blocks per SM is the same axis.)
 
 <OccupancyPlateau />
 
@@ -213,15 +213,13 @@ After the first two ideas, I stripped the online-softmax work out of the kernel 
 
 At `N=4096` the full kernel is 52.0 ms and the no-softmax kernel is 51.0 ms. The online softmax, it turned out, was only **~2% of the runtime** here. Removing the `exp` alone does nothing measurable. The algorithm was not the bottleneck.
 
-That 2% is small partly because I'm only at 10% of peak. The `exp` runs on the SFU, far below the tensor cores' fp16 rate, so per FLOP it's much more expensive than a matmul FLOP. Push the matmul toward peak and the softmax's share of the runtime grows, which is why FA2 works to minimize it and FA3 hides it behind the tensor cores. At 10% of peak I just don't feel it yet.
+That 2% is small partly because I'm only at 10% of peak. The `exp` runs on the SFU, far below the tensor cores' fp16 rate, so per FLOP it's much more expensive than a matmul FLOP. When matmul is pushed towards its peak, the softmax's share of the runtime grows, which is why FA2 works to minimize it and FA3 hides it behind the tensor cores. At 10% of peak I just don't feel it yet.
 
 ## So what is the bottleneck?
 
-Each idea ruled something out. The softmax is 2%, occupancy has headroom, and wider K/V blocks paid a quarter of what the bookkeeping story predicted. None of the usual knobs reach where the time is going, which leaves raw memory bandwidth.
+Each idea ruled something out. The softmax is 2%, occupancy has headroom, and wider K/V blocks paid a quarter of what the bookkeeping story predicted. Nothing I tried reached where the time is going. `ncu` would settle this directly, but I believe the bottleneck is likely just raw memory bandwidth. One head's K and V is only ~2 MB, but the benchmark runs `B·H = 128` heads at once, so the live K/V across all the resident blocks is closer to ~256 MB, which is well over the 40 MB L2. If those re-reads mostly miss L2, my 16-row tiles re-stream K and V about `N/16` times per head, which works out to ~60 GB and would put me near two-thirds of the card's bandwidth. If they mostly hit L2, bandwidth is a non-issue. Without the DRAM counters I can't tell which it is.
 
-That's the one thing `ncu` would settle directly, and its DRAM counters were blocked, so the back-of-envelope has to stand in. One head's K and V is only ~2 MB, but the benchmark runs `B·H = 128` heads at once, so the live K/V across all the resident blocks is closer to ~256 MB, well over the 40 MB L2. If those re-reads mostly miss L2, my 16-row tiles re-stream K and V about `N/16` times per head, which works out to ~60 GB and would put me near two-thirds of the card's bandwidth. If they mostly hit L2, bandwidth is a non-issue. Without the counters I can't tell which, so I can't cleanly rule it in or out.
-
-And it tangles with the fix I'd reach for anyway. The per-block overhead is real. Every K-block my warp writes the scores to shared memory, runs the softmax over them, writes the `P·V` result back to shared memory, and adds it into an output accumulator that also lives in shared memory. With only 16 output rows to amortize that plumbing against, it's a big fraction of the work, and SDPA avoids most of it by giving each warp a much bigger tile with the accumulator held in registers. But a bigger per-warp tile also cuts how many times I re-read K and V, so it would relieve bandwidth and the plumbing at the same time. Those two are exactly what I can't separate here, and telling them apart is what the DRAM counters, or a controlled sweep of the tile height, would be for. What I can say is that the softmax and occupancy aren't it, and the rest of the gap lives in the memory-and-tile-shape regime, which is the register-resident `mma.sync` rewrite I stopped short of.
+My kernel stages every K-block through shared memory (scores in, runs the softmax over them, writes the `P·V` result back out, adds it into an output accumulator) amortized over just 16 output rows, so that overhead is a big fraction of the work. SDPA erases most of it with a much larger per-warp tile and a register-resident accumulator. But a larger tile also cuts how often I re-read K and V, so it would relieve bandwidth and overhead at the same time, which is why my timing alone can't separate the two and DRAM counters would.
 
 <details class="aside">
 <summary>Aside: I couldn't run the profiler</summary>
@@ -273,7 +271,7 @@ The forward pass is correct in three versions that each fix one more thing, and 
 | WMMA, FA2 schedule (best) | 21 | tensor cores are necessary, ~10% of SDPA, not enough |
 | PyTorch SDPA (flash backend) | ~200 | the target, ~65% of the card's peak |
 
-The bar I set going in was a correct FA2-schedule kernel benchmarked against SDPA, and I hit that. Closing the rest of the gap means a bigger per-warp tile with the output accumulator held in registers, the `mma.sync` plus swizzled-shared-memory rewrite, and that same change would relieve whatever bandwidth pressure I couldn't measure. I stopped short of it here. It's real work, probably days of it, and the part I found interesting was pinning down which explanations the data rules out, more than squeezing out the last few percent.
+I hit the original goal I set going in, which was a correct FA2-schedule kernel benchmarked against SDPA. Closing the rest of the performance gap probably needs a bigger per-warp tile with the output accumulator held in registers, the `mma.sync` rewrite, and would be a LOT easier with a profiler, so I will stop short of it here.
 
 ## What's next
 
@@ -281,4 +279,4 @@ Two things this post skips, coming in a follow-up (eventually). The backward pas
 
 The FA3/FA4 frontier is the other one. Once you do have a big register-resident tile keeping the tensor cores busy, the next wall is feeding them without stalling, and that's what Hopper's Tensor Memory Accelerator and warp specialization were built for, with dedicated async-copy hardware for the loads and a producer/consumer split that overlaps them with the matmul.
 
-I stopped the forward pass at a correct FA2 kernel with the bottleneck narrowed down rather than pushing through the `mma.sync` rewrite, because for me the payoff of this project was understanding where the time goes, and I'd rather spend the next stretch a bit higher up the stack. So the backward pass and the FA3/4 write-up are things I'll come back to.
+To be honest writing raw kernels is probably not the layer I'm most drawn to, and that's a big part of why this one took me so long to finish. The parts of the stack I want to spend more time in sit a bit higher up, so I'm leaving the backward pass and the FA3/4 write-up as things I'll come back to!
