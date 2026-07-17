@@ -1,6 +1,7 @@
 ---
 title: "FlashAttention bundles two separate wins"
 date: "2026-06-24"
+updated: "2026-07-11"
 description: "I wrote the FlashAttention forward pass from scratch in CUDA to understand where 'it's fast because it's IO-aware' actually comes from. It bundles two separate wins, and in my kernel the online-softmax trick everyone teaches came to about 2% of the runtime."
 tags: ["cuda", "flashattention", "gpu", "attention", "profiling"]
 ---
@@ -11,6 +12,7 @@ import MemoryWall from '../../components/MemoryWall.astro';
 import TilingSchematic from '../../components/TilingSchematic.astro';
 import ThroughputLadder from '../../components/ThroughputLadder.astro';
 import RuntimeSplit from '../../components/RuntimeSplit.astro';
+import OccupancyPlateau from '../../components/OccupancyPlateau.astro';
 
 I spent a couple of weeks on this FlashAttention mini-project, starting with the forward pass from scratch in CUDA, to get a more hands-on understanding of the key breakthroughs. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems. The three weeks before this I spent learning CUDA fundamentals and FlashAttention, mostly out of [GPU MODE](https://www.youtube.com/@GPUMODE) lectures, Stanford's [CS336](https://stanford-cs336.github.io/), the PMPP book, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). I took CS 152, the upper-division computer architecture class, at UC Berkeley this past spring and have previously worked with Trainium and NKI, so a lot of the ideas came naturally. But it's one thing to read about how to program GPUs, and another to actually do it, and make a kernel go fast.
 
@@ -19,6 +21,7 @@ I spent a couple of weeks on this FlashAttention mini-project, starting with the
 
 - **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
 - **Going fast is the second win, and the online-softmax trick has little to do with it.** The trick is what makes the memory win possible, but it is not where the *time* goes. Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
+- **The gap to SDPA wasn't where I first guessed.** I thought I was memory-bound, spending my time moving K and V. Measuring it, occupancy and the softmax both came back as non-issues, and the gap lives in the per-warp tile being too small to amortize the fixed per-block bookkeeping. The one thing I couldn't cleanly separate it from is raw bandwidth, since the profiler I'd need was blocked.
 - **Programming is hard 😭** I spent hours debugging nothing because a kernel never launched and the GPU swapped underneath me.
 
 This is the forward pass, measured on one A100. The backward pass and the Hopper FA3/4 are left to a follow-up.
@@ -186,17 +189,21 @@ Tensor cores were necessary, but surprisingly to me nowhere near sufficient. The
 
 I had three ideas about why a correct tensor-core kernel was still only 10% of SDPA, and how to bridge the gap.
 
-### Idea 1: amortize the softmax over bigger tiles
+### Idea 1: amortize the softmax over wider K/V blocks
 
-With a 16-wide K/V block, the per-block softmax bookkeeping runs once per 16 keys. Widen the block to 64 and it runs a quarter as often, so if the bookkeeping is the cost, a 4× wider tile should pay off big.
+With a 16-wide K/V block, the per-block softmax bookkeeping runs once per 16 keys. Widen the block to 64 keys and it runs a quarter as often, so if the bookkeeping is the cost, a 4× wider block should pay off big. This widens how many keys I process per step, and leaves the grid and the 16 query rows each warp owns unchanged.
 
-This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. If the softmax bookkeeping were the cost, amortizing it over 4× the keys should have paid close to 4×. Getting a quarter of that tells me the bookkeeping was never the main cost, so the bottleneck is elsewhere.
+This was right in direction but wrong in size. Throughput went 14.7 → 21 TFLOP/s, a ×1.44. Amortizing the bookkeeping over 4× the keys should have paid close to 4×, so getting a quarter of that tells me the bookkeeping was never the main cost, and the bottleneck is elsewhere.
 
 ### Idea 2: raise occupancy
 
-One warp per block is about 3% occupancy, so the SMs looked starved for warps to hide memory latency behind. I put four warps on a block and opted into dynamic shared memory to fit them.
+One warp per block runs at about 10 warps per SM, roughly 16% of the card's 64-warp ceiling, which looked low enough that the SMs might be starved for warps to hide latency behind. I put four warps on a block, which needed dynamic shared memory to fit.
 
-Occupancy rose to 8 warps per SM, but throughput actually **fell about 21%**, from 21 TF to ~16.6. To me, adding warps seemed to be the standard fix for a *latency*-bound kernel, so if latency-hiding were the issue, more warps should have helped, but instead it hurt. I think what happened was that because in my schedule each warp owns its own Q-block and streams all of K and V for it, four warps on a block re-read K and V four times over instead of sharing them. On a kernel that's already moving too many bytes, the extra warps multiply the traffic.
+That made it worse. Throughput **fell about 21%**, from 21 TF to ~16.6, and the bigger shared-memory footprint meant only two blocks fit per SM, so warps-per-SM went down rather than up. But four warps moved several things at once, the tile decomposition and the shared-memory use along with the occupancy, so it's a blunt test. A cleaner one is to pad the 21 TF kernel with shared memory it never reads, just to reserve the space. That lowers how many blocks fit on an SM and changes nothing else. (Occupancy is really resident warps per SM, but every block here is one warp, so blocks per SM is the same axis.)
+
+<OccupancyPlateau />
+
+Throughput climbs with occupancy up to about 5 blocks per SM and then flattens near 21. My kernel already runs at 10 blocks per SM, out on the flat part, so it isn't starved for occupancy. That explains the four-warp result too: I was already past the point where more warps help.
 
 ### Idea 3: the softmax glue is the cost
 
@@ -206,9 +213,15 @@ After the first two ideas, I stripped the online-softmax work out of the kernel 
 
 At `N=4096` the full kernel is 52.0 ms and the no-softmax kernel is 51.0 ms. The online softmax, it turned out, was only **~2% of the runtime** here. Removing the `exp` alone does nothing measurable. The algorithm was not the bottleneck.
 
-Although individually ineffective, I think the results of all three experiments actually point to the same root cause. Bigger tiles helped a little and then plateaued, more warps made it worse by multiplying K/V reads, and the softmax is 2%. What's left, is memory traffic. My kernel re-streams all of K and V from global memory for every 16-row Q-block, so it moves far more bytes than the algorithm requires, and that's the cost the tile-size and occupancy knobs were both really touching. Due to limitations on Lightning AI (and other providers) I couldn't run `ncu` to read the stall counters, so this is just my leading hypothesis that is consistent with all three results.
+That 2% is small partly because I'm only at 10% of peak. The `exp` runs on the SFU, far below the tensor cores' fp16 rate, so per FLOP it's much more expensive than a matmul FLOP. Push the matmul toward peak and the softmax's share of the runtime grows, which is why FA2 works to minimize it and FA3 hides it behind the tensor cores. At 10% of peak I just don't feel it yet.
 
-FA2's move is to cut non-matmul work off the inner loop, and my ablation says non-matmul work is 2% of this kernel, so that optimization is in the noise here. However, I'm only running at 10% of peak, which stretches the denominator and shrinks every non-matmul slice. On A100 the softmax `exp` runs on the SFU at roughly 1/16th the tensor cores' fp16 throughput, so per FLOP it's about 16× more expensive than a matmul FLOP. Push the matmul toward peak and that 2% climbs. Minimizing it (FA2) and hiding it behind the tensor cores (FA3's warp specialization) is exactly what you do once the matmul is no longer leaving 90% of the machine on the floor. I'm just not there yet, so I get to see the softmax as free.
+## So what is the bottleneck?
+
+Each idea ruled something out. The softmax is 2%, occupancy has headroom, and wider K/V blocks paid a quarter of what the bookkeeping story predicted. None of the usual knobs reach where the time is going, which leaves raw memory bandwidth.
+
+That's the one thing `ncu` would settle directly, and its DRAM counters were blocked, so the back-of-envelope has to stand in. One head's K and V is only ~2 MB, but the benchmark runs `B·H = 128` heads at once, so the live K/V across all the resident blocks is closer to ~256 MB, well over the 40 MB L2. If those re-reads mostly miss L2, my 16-row tiles re-stream K and V about `N/16` times per head, which works out to ~60 GB and would put me near two-thirds of the card's bandwidth. If they mostly hit L2, bandwidth is a non-issue. Without the counters I can't tell which, so I can't cleanly rule it in or out.
+
+And it tangles with the fix I'd reach for anyway. The per-block overhead is real. Every K-block my warp writes the scores to shared memory, runs the softmax over them, writes the `P·V` result back to shared memory, and adds it into an output accumulator that also lives in shared memory. With only 16 output rows to amortize that plumbing against, it's a big fraction of the work, and SDPA avoids most of it by giving each warp a much bigger tile with the accumulator held in registers. But a bigger per-warp tile also cuts how many times I re-read K and V, so it would relieve bandwidth and the plumbing at the same time. Those two are exactly what I can't separate here, and telling them apart is what the DRAM counters, or a controlled sweep of the tile height, would be for. What I can say is that the softmax and occupancy aren't it, and the rest of the gap lives in the memory-and-tile-shape regime, which is the register-resident `mma.sync` rewrite I stopped short of.
 
 <details class="aside">
 <summary>Aside: I couldn't run the profiler</summary>
@@ -260,14 +273,12 @@ The forward pass is correct in three versions that each fix one more thing, and 
 | WMMA, FA2 schedule (best) | 21 | tensor cores are necessary, ~10% of SDPA, not enough |
 | PyTorch SDPA (flash backend) | ~200 | the target, ~65% of the card's peak |
 
-The bar I set going in was a correct FA2-schedule kernel benchmarked against SDPA. I think the real fix is a register-resident kernel that stages K/V once and hands the tensor cores bigger, better-fed tiles, which is the `mma.sync` plus swizzled-shared-memory rewrite. I stopped short of that here. Chasing SDPA parity is probably hours of `mma.sync` tuning.
-
-The memory-wall plot only measures allocation and does not measure HBM traffic. An ideal FA kernel reads Q, K, and V about once, so its traffic is O(N), but mine re-streams all of K and V for every Q-block, so the bytes it *moves* are closer to O(N²) even though the bytes it holds stay O(N). Pinning down the traffic exactly needs the DRAM counters `ncu` gives, which I couldn't run here.
+The bar I set going in was a correct FA2-schedule kernel benchmarked against SDPA, and I hit that. Closing the rest of the gap means a bigger per-warp tile with the output accumulator held in registers, the `mma.sync` plus swizzled-shared-memory rewrite, and that same change would relieve whatever bandwidth pressure I couldn't measure. I stopped short of it here. It's real work, probably days of it, and the part I found interesting was pinning down which explanations the data rules out, more than squeezing out the last few percent.
 
 ## What's next
 
 Two things this post skips, coming in a follow-up (eventually). The backward pass is the harder half. It has the `D = rowsum(dO ∘ O)` preprocessing trick, it recomputes the scores block by block instead of storing them, trading FLOPs for the HBM a materialized-`S` backward would cost, and it splits into a dK/dV loop and a dQ loop. I will probably do it in Triton.
 
-The FA3/FA4 frontier is the other one. The gap I hit, a kernel spending its time moving K/V instead of feeding the tensor cores, is what Hopper's Tensor Memory Accelerator and warp specialization were built to close, with dedicated async-copy hardware for the loads and a producer/consumer split that overlaps them with the matmul.
+The FA3/FA4 frontier is the other one. Once you do have a big register-resident tile keeping the tensor cores busy, the next wall is feeding them without stalling, and that's what Hopper's Tensor Memory Accelerator and warp specialization were built for, with dedicated async-copy hardware for the loads and a producer/consumer split that overlaps them with the matmul.
 
-To be honest writing raw kernels is probably not the layer I'm most drawn to, and that's a big part of why this one took me so long to finish. The parts of the stack I want to spend more time in sit a bit higher up, so I'm leaving the backward pass and the FA3/4 write-up as things I'll come back to!
+I stopped the forward pass at a correct FA2 kernel with the bottleneck narrowed down rather than pushing through the `mma.sync` rewrite, because for me the payoff of this project was understanding where the time goes, and I'd rather spend the next stretch a bit higher up the stack. So the backward pass and the FA3/4 write-up are things I'll come back to.
