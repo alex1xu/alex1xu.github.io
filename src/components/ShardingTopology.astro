@@ -1,0 +1,101 @@
+---
+// How the delivery path was sharded. Top: the ~54k wall — one routing consumer drains
+// the engine's output ring and hands every event to all 250 client lanes, a single serial
+// stage. Bottom: the output ring was already a multicast with independent per-consumer
+// cursors, so N shards (default 4) each take their own cursor, see every event, and route
+// only the clients they own (user_id % N). Each shard is one busy-poll thread with its own
+// lanes and its own egress lock — no shared mutable lane, per-client order preserved.
+const W = 720, H = 388;
+---
+<figure class="chart shtop">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Sharding the delivery path. Before: the engine writes events into one multicast output ring; a single routing consumer drains it and fans every event out to all 250 client connections, a serial stage that walls throughput at 54k. After: the same ring hands a separate cursor to each of four shard threads; every shard sees every event but routes only the clients it owns by user-id modulo four, and each shard owns its clients' lanes and egress lock end to end, so the routing runs on four cores at once and reaches 97k.">
+    {/* ---------- BEFORE ---------- */}
+    <text x={20} y={24} class="ptitle">before — one serial consumer</text>
+    <text x={W - 20} y={24} text-anchor="end" class="cap warn">~54k</text>
+    {/* engine */}
+    <rect x={20} y={44} width={72} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--fg)" stroke-width="1.5" />
+    <text x={56} y={62} text-anchor="middle" class="btitle">engine</text>
+    <text x={56} y={76} text-anchor="middle" class="bsub">1 writer</text>
+    <line x1={92} y1={64} x2={116} y2={64} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)" />
+    {/* ring */}
+    <rect x={116} y={48} width={44} height={32} rx="4" fill="var(--bg)" stroke="var(--border)" />
+    <text x={138} y={68} text-anchor="middle" class="ring">ring</text>
+    <line x1={160} y1={64} x2={184} y2={64} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)" />
+    {/* single consumer */}
+    <rect x={184} y={44} width={132} height={40} rx="6" fill="var(--accent)" stroke="var(--accent)" />
+    <text x={250} y={61} text-anchor="middle" class="btitle inv">routing consumer</text>
+    <text x={250} y={75} text-anchor="middle" class="bsub inv">1 thread</text>
+    {/* 250 lanes */}
+    {[0,1,2,3,4].map((i) => (
+      <line x1={316} y1={64} x2={356} y2={38 + i * 13} stroke="var(--muted)" stroke-width="1" opacity="0.7" />
+    ))}
+    <text x={366} y={58} class="ann">all 250 client lanes,</text>
+    <text x={366} y={73} class="ann dim">one after another</text>
+    <text x={20} y={110} class="verdict warn">one core routes everything → the wall</text>
+
+    {/* divider */}
+    <line x1={16} y1={128} x2={W - 16} y2={128} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.7" />
+
+    {/* ---------- AFTER ---------- */}
+    <text x={20} y={154} class="ptitle">after — N shards off the multicast ring</text>
+    <text x={W - 20} y={154} text-anchor="end" class="cap acc">~97k</text>
+    {/* engine */}
+    <rect x={20} y={230} width={66} height={40} rx="6" fill="var(--bg-soft)" stroke="var(--fg)" stroke-width="1.5" />
+    <text x={53} y={248} text-anchor="middle" class="btitle">engine</text>
+    <text x={53} y={262} text-anchor="middle" class="bsub">1 writer</text>
+    <line x1={86} y1={250} x2={104} y2={250} stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)" />
+    {/* multicast ring */}
+    <rect x={104} y={222} width={48} height={56} rx="4" fill="var(--bg)" stroke="var(--border)" />
+    <text x={128} y={246} text-anchor="middle" class="ring">ring</text>
+    <text x={128} y={262} text-anchor="middle" class="ring dim">multicast</text>
+    {/* 4 shard threads, each its own cursor */}
+    {[0,1,2,3].map((i) => {
+      const sy = 176 + i * 40;
+      return (
+        <g>
+          <line x1={152} y1={250} x2={190} y2={sy + 14} stroke="var(--muted)" stroke-width="1.2" opacity="0.85" marker-end="url(#ar)" />
+          <rect x={190} y={sy} width={116} height={28} rx="5" fill="var(--accent-soft)" stroke="var(--accent)" />
+          <text x={248} y={sy + 18} text-anchor="middle" class="shlbl">shard {i}</text>
+          {/* lanes for this shard */}
+          {[0,1,2].map((j) => (
+            <line x1={306} y1={sy + 14} x2={328} y2={sy + 6 + j * 8} stroke="var(--muted)" stroke-width="0.8" opacity="0.55" />
+          ))}
+        </g>
+      );
+    })}
+    {/* right-side annotation block, clear of the boxes */}
+    <text x={360} y={188} class="ann">owns clients where <tspan class="annmono">user_id % 4 = shard</tspan></text>
+    <text x={360} y={206} class="ann">— its own cursor, lanes, egress lock,</text>
+    <text x={360} y={224} class="ann">and the ~62 clients it alone routes.</text>
+    <text x={360} y={246} class="ann dim">every shard sees every event;</text>
+    <text x={360} y={261} class="ann dim">acts only on the ones it owns.</text>
+    <text x={20} y={358} class="verdict acc">four cores route in parallel → 4× the throughput per stage</text>
+
+    <defs>
+      <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)" />
+      </marker>
+    </defs>
+  </svg>
+  <figcaption>The delivery path before and after sharding. The wall was one routing thread fanning every event out to all 250 client lanes serially. The output ring, though, was already a Disruptor-style multicast where each consumer has its own cursor and the producer gates on the slowest — built that way in part one for the market-data reader. So sharding is just asking the ring for four cursors instead of one: each shard thread sees every event, routes only the ~62 clients it owns by <code>user_id % 4</code>, and holds those clients' lanes and egress lock end to end, so no two shards ever touch the same lane and each client's sequence numbers stay gap-free. No fan-out layer, no extra copy — the routing simply runs on four cores at once.</figcaption>
+</figure>
+
+<style>
+  .shtop :global(.ptitle) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .shtop :global(.cap) { font-size: 13px; font-family: var(--font-mono); font-weight: 700; }
+  .shtop :global(.cap.warn) { fill: var(--warning); }
+  .shtop :global(.cap.acc) { fill: var(--accent); }
+  .shtop :global(.btitle) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .shtop :global(.btitle.inv) { fill: #fff; }
+  .shtop :global(.bsub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .shtop :global(.bsub.inv) { fill: #fff; opacity: 0.9; }
+  .shtop :global(.ring) { font-size: 10px; fill: var(--muted); font-family: var(--font-mono); }
+  .shtop :global(.ring.dim) { font-size: 9px; opacity: 0.7; }
+  .shtop :global(.shlbl) { font-size: 11px; fill: var(--fg); font-family: var(--font-mono); font-weight: 600; }
+  .shtop :global(.ann) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .shtop :global(.ann.dim) { opacity: 0.8; }
+  .shtop :global(.annmono) { font-family: var(--font-mono); font-size: 10px; fill: var(--fg); }
+  .shtop :global(.verdict) { font-size: 11.5px; font-family: var(--font-mono); font-weight: 600; }
+  .shtop :global(.verdict.warn) { fill: var(--warning); }
+  .shtop :global(.verdict.acc) { fill: var(--accent); }
+</style>

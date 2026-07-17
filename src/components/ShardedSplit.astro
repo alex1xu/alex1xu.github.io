@@ -1,0 +1,59 @@
+---
+// CPU self-time split at the ~97k knee, after sharding — a clean bar breakdown, not a
+// flamegraph. The point is the shape: no single pegged consumer. Per-thread-group self-time
+// from the folded perf capture: tokio workers 44.2% (socket-write path, of which
+// memset+memmove ≈11.5% of all samples), 4 projection shards 39.8% (balanced within 3% of each
+// other, ≈10% each), engine 16.0% (busy-spin, not work).
+const rows = [
+  { label: 'tokio workers ×8', sub: 'socket-write path', v: 44.2, kind: 'work',
+    seg: { label: 'memset + memmove', v: 11.5 } },
+  { label: 'projection shards ×4', sub: 'balanced within 3%', v: 39.8, kind: 'accent' },
+  { label: 'engine', sub: 'busy-spin, not work', v: 16.0, kind: 'spin' },
+];
+const W = 760, H = 220, left = 200, top = 30, barsRight = 40;
+const plotW = W - left - barsRight;
+const maxV = 50;
+const bx = (v) => (v / maxV) * plotW;
+const rowH = 46, barH = 24;
+const gridV = [0, 10, 20, 30, 40, 50];
+const fill = (k) => k === 'accent' ? 'var(--accent)' : k === 'spin' ? 'var(--border)' : 'var(--accent-soft)';
+---
+<figure class="chart split">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="CPU self-time at the 97k knee after sharding, by thread group. Tokio worker threads doing socket writes take 44.2%, of which memset and memmove — copying frames out to sockets — are about 11.5% of all samples. The four projection shards take 39.8% together, balanced within 3% of each other. The engine takes 16%, which is busy-spin, not work. There is no single pegged consumer; the load is spread across every core.">
+    {gridV.map((g) => (
+      <g>
+        <line x1={left + bx(g)} y1={top - 6} x2={left + bx(g)} y2={top + rows.length * rowH - 8} stroke="var(--border)" stroke-width="1" opacity="0.7" />
+        <text x={left + bx(g)} y={top + rows.length * rowH + 8} text-anchor="middle" class="ax">{g}%</text>
+      </g>
+    ))}
+    {rows.map((r, i) => {
+      const y = top + i * rowH;
+      return (
+        <g>
+          <text x={left - 12} y={y + barH / 2 - 2} text-anchor="end" class="rl">{r.label}</text>
+          <text x={left - 12} y={y + barH / 2 + 11} text-anchor="end" class="rs">{r.sub}</text>
+          <rect x={left} y={y} width={bx(r.v)} height={barH} rx="3" fill={fill(r.kind)} />
+          {r.seg && (
+            <g>
+              <rect x={left} y={y} width={bx(r.seg.v)} height={barH} rx="3" fill="var(--accent)" opacity="0.55" />
+              <line x1={left + bx(r.seg.v) + 1} y1={y} x2={left + bx(r.seg.v) + 1} y2={y + barH} stroke="var(--bg)" stroke-width="2" />
+            </g>
+          )}
+          <text x={left + bx(r.v) + 8} y={y + barH / 2 + 4} class="val">{r.v}%</text>
+          {r.seg && <text x={left + bx(r.seg.v) / 2} y={y + barH / 2 + 4} text-anchor="middle" class="segl">{r.seg.v}%</text>}
+          {r.seg && <text x={left + bx(r.seg.v) + 8} y={y - 5} class="segsub">↑ {r.seg.label}</text>}
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>CPU self-time at the ~97k knee, by thread group — the sharded profile, as a breakdown rather than a flamegraph. There is no single pegged consumer: the routing that one thread used to do serially now spreads across four projection shards balanced within 3% of each other, the socket writes spread across the eight tokio workers, and the engine's 16% is busy-spin, not work. The largest real cost is the <code>memset</code>/<code>memmove</code> inside the socket-write path (~11.5% of all samples) — copying encoded frames out to 250 connections, which scales with message count, not frame size.</figcaption>
+</figure>
+
+<style>
+  .split :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .split :global(.rl) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .split :global(.rs) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .split :global(.val) { font-size: 12px; fill: var(--fg); font-family: var(--font-mono); font-weight: 600; }
+  .split :global(.segl) { font-size: 9.5px; fill: #fff; font-family: var(--font-mono); }
+  .split :global(.segsub) { font-size: 9.5px; fill: var(--muted); font-family: var(--font-mono); }
+</style>

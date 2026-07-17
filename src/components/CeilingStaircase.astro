@@ -1,0 +1,86 @@
+---
+// The delivery ceiling across the hunt, as a staircase: x = the rounds in order, y = the
+// sustained knee (acked orders/s). The shape is the argument. Risers = the ceiling rose;
+// flat treads = a correct fix that moved it by nothing (the three null results). Two big
+// risers — decouple the journal, shard the delivery path — carry almost the whole climb.
+//
+// Values (k acked/s), from the sustained load-test knees. 20k = part 1's ceiling on the old 2-box
+// rig, itself partly co-limited by the single load box. 27k = the isolated-rig pre-fix baseline — a
+// rig+binary re-baseline, NOT a fix, so it's drawn neutral. 31k = market-data fan-out cut. 31k
+// off-tokio (null). 54k journal decoupling. 54k Arc-share (null, 53,995→53,987). 97k shard ×4
+// (≈85k with the old load gens, 97k once fixed). 97k cap snapshot depth (null, 97.3→97.7).
+const pts = [
+  { x: 'part 1\n(2-box)',    v: 20, kind: 'start', note: "part 1's ceiling on the old 2-box rig — itself partly limited by the single load box, not a clean server number" },
+  { x: 'isolated\nrig',      v: 27, kind: 'base', note: 'moved to a fully isolated 3-box rig (different rig and binary) — a re-baseline, not a fix; this is the real number to beat' },
+  { x: 'cut MD\nfan-out',    v: 31, kind: 'win',  note: 'batch per-trade broadcasts into the 20 Hz tick; the eviction cliff vanishes' },
+  { x: 'off\ntokio',         v: 31, kind: 'null', note: 'routing consumer off the async runtime — freed a core, knee flat' },
+  { x: 'decouple\njournal',  v: 54, kind: 'win',  note: 'stop the fsync gating admission — the first doubling' },
+  { x: 'Arc-\nshare',        v: 54, kind: 'null', note: 'kill the per-event clone — allocation gone, knee flat' },
+  { x: 'shard\ndelivery',    v: 97, kind: 'win',  note: 'split the delivery thread across 4 cores — ≈85k with the old load gens, 97k once they were fixed' },
+  { x: 'cap\nsnapshot',      v: 97, kind: 'null', note: 'cap snapshot depth — fewer bytes, knee flat (it is message count, not size)' },
+];
+const W = 1000, H = 380;
+const left = 50, right = 190, top = 40, bottom = 92;
+const plotW = W - left - right, plotH = H - top - bottom;
+const maxV = 105;
+const n = pts.length;
+const X = (i) => left + (i / (n - 1)) * plotW;
+const Y = (v) => top + plotH - (v / maxV) * plotH;
+const gridV = [0, 25, 50, 75, 100];
+// Step-after path.
+let d = `M ${X(0)} ${Y(pts[0].v)}`;
+for (let i = 1; i < n; i++) d += ` L ${X(i)} ${Y(pts[i - 1].v)} L ${X(i)} ${Y(pts[i].v)}`;
+const risers = pts.slice(1).map((p, idx) => ({ i: idx + 1, from: pts[idx].v, to: p.v, kind: p.kind }));
+---
+<figure class="chart stair">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="The delivery ceiling across the hunt, as a staircase. Sustained knee in thousands of acked orders per second, over the rounds in order: 20k is part one's ceiling on the old 2-box rig; moving to a fully isolated 3-box rig re-baselines it to 27k (a measurement-setup change, not a fix, drawn as a dashed neutral step); cutting the market-data fan-out raises it to 31k; taking the routing consumer off tokio holds at 31k (a correct fix that moved nothing); decoupling the journal fsync roughly doubles it to 54k; sharing the message behind an Arc holds at 54k; sharding the delivery path across four cores roughly doubles it again to 97k; and capping the snapshot depth holds at 97k. Three correct fixes are flat treads; two big risers carry almost the whole climb.">
+    {gridV.map((g) => (
+      <g>
+        <line x1={left} y1={Y(g)} x2={left + plotW} y2={Y(g)} stroke="var(--border)" stroke-width="1" />
+        <text x={left - 10} y={Y(g) + 3.5} text-anchor="end" class="ax">{g}k</text>
+      </g>
+    ))}
+    {pts.map((p, i) => (
+      <line x1={X(i)} y1={Y(p.v)} x2={X(i)} y2={top + plotH} stroke="var(--border)" stroke-width="1" stroke-dasharray="1 5" opacity="0.7" />
+    ))}
+    <path d={d} fill="none" stroke="var(--muted)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.45" />
+    {risers.filter((r) => r.to !== r.from).map((r) => (
+      <line x1={X(r.i)} y1={Y(r.from)} x2={X(r.i)} y2={Y(r.to)}
+        stroke={r.kind === 'base' ? 'var(--muted)' : 'var(--accent)'} stroke-width="3" stroke-linecap="round"
+        stroke-dasharray={r.kind === 'base' ? '3 3' : undefined} opacity={r.kind === 'base' ? 0.7 : 1} />
+    ))}
+    {pts.map((p, i) => (i > 0 && p.v === pts[i - 1].v && p.kind === 'null') ? (
+      <text x={(X(i) + X(i - 1)) / 2} y={Y(p.v) + 18} text-anchor="middle" class="flat">no change</text>
+    ) : null)}
+    {pts.map((p, i) => (
+      <g>
+        <title>{p.note}</title>
+        <circle cx={X(i)} cy={Y(p.v)} r="5" fill={p.kind === 'win' ? 'var(--accent)' : 'var(--muted)'} stroke="var(--bg)" stroke-width="2" />
+      </g>
+    ))}
+    {pts.map((p, i) => (i === 0 || p.v !== pts[i - 1].v) ? (
+      <text x={X(i)} y={Y(p.v) - 12} text-anchor="middle" class={p.kind === 'win' ? 'val win' : 'val'}>{p.v}k</text>
+    ) : null)}
+    {pts.map((p, i) => p.x.split('\n').map((line, li) => (
+      <text x={X(i)} y={top + plotH + 18 + li * 12} text-anchor="middle" class="xl">{line}</text>
+    )))}
+    <g>
+      <line x1={left + plotW + 20} y1={top + 2} x2={left + plotW + 38} y2={top + 2} stroke="var(--accent)" stroke-width="3" stroke-linecap="round" />
+      <text x={left + plotW + 44} y={top + 6} class="leg">raised ceiling</text>
+      <circle cx={left + plotW + 29} cy={top + 24} r="5" fill="var(--muted)" stroke="var(--bg)" stroke-width="2" />
+      <text x={left + plotW + 44} y={top + 28} class="leg">fix, no change</text>
+      <line x1={left + plotW + 20} y1={top + 46} x2={left + plotW + 38} y2={top + 46} stroke="var(--muted)" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7" />
+      <text x={left + plotW + 44} y={top + 50} class="leg">rig change</text>
+    </g>
+  </svg>
+  <figcaption>The delivery ceiling across the hunt, in the order I hit each round — sustained acked orders/s up the y-axis. The first step is a dashed <em>re-baseline</em>, not a fix: moving off part one's 2-box rig onto a fully isolated one reset the honest starting number to ~27k. Three correct, verified fixes are <em>flat treads</em>: they did exactly what they were designed to and moved the ceiling by nothing. Almost the whole climb to ~97k is two risers — decoupling the journal <code>fsync</code> and sharding the delivery path across cores.</figcaption>
+</figure>
+
+<style>
+  .stair :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .stair :global(.xl) { font-size: 10.5px; fill: var(--fg); font-family: var(--font-sans); }
+  .stair :global(.val) { font-size: 12px; fill: var(--muted); font-family: var(--font-mono); font-weight: 600; }
+  .stair :global(.val.win) { fill: var(--accent); font-size: 13px; }
+  .stair :global(.flat) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); font-style: italic; }
+  .stair :global(.leg) { font-size: 11px; fill: var(--fg); font-family: var(--font-sans); }
+</style>

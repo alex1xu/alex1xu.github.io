@@ -1,0 +1,140 @@
+---
+title: "Mario Markets, part 2: six rounds chasing a delivery ceiling"
+date: "2026-07-13"
+description: "The Rust exchange from part one topped out delivering fills to 250 clients. I spent about a week chasing that ceiling on an EC2 rig, through six rounds where the constraint changed character every time. Three correct fixes moved throughput by nothing, two roughly doubled it, and once the thing limiting me was my own measurement rig, not the server."
+tags: ["rust", "systems", "trading", "performance", "profiling", "tokio"]
+---
+
+import Callout from '../../components/Callout.astro';
+import SystemDataflow from '../../components/SystemDataflow.astro';
+import CeilingStaircase from '../../components/CeilingStaircase.astro';
+import EgressLanes from '../../components/EgressLanes.astro';
+import ProfileSequence from '../../components/ProfileSequence.astro';
+import JournalCoupling from '../../components/JournalCoupling.astro';
+import TwoSidedQueue from '../../components/TwoSidedQueue.astro';
+import ShardingTopology from '../../components/ShardingTopology.astro';
+import ShardedSplit from '../../components/ShardedSplit.astro';
+
+[The first post](/blog/mario-markets) rebuilt a prediction-market exchange into a single-writer, lock-free Rust engine. The engine matched an order in about 2 microseconds and had enormous headroom, but the whole system saturated near 20,000 orders a second delivering fills and market data back out to 250 clients — a ceiling I hadn't cleanly separated from my own load rig at the time. I'd profiled it just enough to name a suspect, one pegged thread routing per-client messages, and finished the post confident the fix was to shard that thread across cores.
+
+The first careful measurement put that thread at 0.4% of the cost. That was the shape of the whole exercise: six rounds of profile, fix, and re-measure, and each time the constraint sat somewhere the last round hadn't pointed. The sharding I'd planned did roughly double the ceiling — after five other things came first.
+
+<Callout type="lesson" title="TL;DR">
+On an isolated rig — server on its own box, load driven from separate boxes over a real network — I ran a profile-fix-measure loop for six rounds. The ceiling moved most rounds, and each round it was a different kind of problem.
+
+- Three correct fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler ranked highest, and capping the market-data snapshot to ten price levels. Each did exactly what it was designed to; the knee held. The profiler's hottest item was not the constraint.
+- One fix cleared the market-data firehose — batching per-trade broadcasts into the 20 Hz tick — which nudged the knee ~27k→~31k but mattered most for killing an eviction cliff, not for throughput.
+- Two fixes roughly doubled it. One removed an `fsync` gating order admission — off-CPU work no sampling profiler ranked (~31k→~54k). The other sharded the single delivery thread across cores (~54k→~97k).
+- Once the limiter was the rig, not the server: the load generators burned more CPU parsing market data than the server spent producing it, so a run above ~80k measured the generators. The fix was to the instrument.
+- What localized the wall was `ss`, not a flamegraph: 126 MB of orders backed up unread on the server's own inbound socket, so the "16.8 ms of network latency" was the same thing as the server failing to read its own socket in time.
+</Callout>
+
+The engine, the rings, and the delivery path this post lives in:
+
+<SystemDataflow />
+
+<CeilingStaircase />
+
+## The delivery cost wasn't where part one guessed
+
+Part one had the server on its own box, but it left two things unsettled: how much of the ~20k was the server versus my single load box, and *where* on the delivery path the cost sat. The isolated rig would answer the first; a profile under saturating load would answer the second. So I profiled, expecting the per-client message re-encode I'd flagged in part one. The profile put that path at 0.4% of CPU. The actual firehose was market data: every trade was broadcast individually to 250 receivers and written as its own frame, and broadcast delivery plus the reference-count churn on the shared buffers came to about a fifth of CPU — a third once the socket writes those frames drove are counted with it. The dropped-frame counter confirmed the volume, climbing by 6 million in 15 seconds — about 13 drops per order.
+
+The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one hadn't failed; it had removed the serde layer that was masking the broadcast machinery beneath it.
+
+Those two are the two egress lanes, and they have opposite contracts:
+
+<EgressLanes />
+
+Trades ride the lossy, latest-only lane, so coalescing them into one frame per 20 Hz tick drops nothing a client is entitled to. Dropped frames went from ~1 million per run to zero, in-system p99 at 30k fell from 4.2 ms to 262 µs, and the eviction cliff vanished. But the sustained knee only crept from ~27k to a ~31k plateau that held flat across 40k, 50k, and 60k offered with half the machine idle — a serialization limit, not CPU exhaustion.
+
+The profile at four points in the hunt, stacked so the dominant cost reads top-to-bottom as it changes character. In two of the four, the largest number in the profile is not the constraint:
+
+<ProfileSequence />
+
+## The pegged thread was mostly runtime overhead
+
+Re-profiling after the batching fix, one worker was still pegged while six idled. That worker was the routing consumer, the single task that drains the engine's output and hands each event to the right client, and the natural reading is that the stage is expensive and should be made cheaper. Breaking down its core said otherwise: the tokio runtime machinery — scheduler, `clock_gettime`, epoll, timer wheel — came to most of it, waking the 250 downstream tasks another ~9%, and the actual routing work ~8%. About 92% of the pegged core was async-runtime overhead rather than the routing the thread existed to do. The cause is specific: the consumer is an async task that is almost always ready, because there is almost always an event waiting, so it never yields for lack of work. Each poll runs to the end of its scheduling budget, reschedules itself, and gets re-polled, repaying the full task machinery and a `clock_gettime` every cycle. It was a busy-poll loop paying full async-task overhead — the machinery around the work cost roughly 12× the work itself.
+
+So I moved it off the async runtime onto a dedicated busy-poll thread, the way the engine already runs. It did exactly what it was designed to: the thread's CPU dropped from 99% to ~30%, and machine idle rose from ~52% to ~65%. The knee stayed at ~31k.
+
+That is the first null result. The fix was correct and it freed a whole core, but throughput didn't move, because the pegged-CPU thread and the throughput-limiting stage were not the same thing.
+
+## An `fsync` gating admission — invisible to the profiler
+
+With the routing thread quiet, the profiler moved to a new headline: the engine, pegged at 99.9%, apparently engine-bound. But the engine's actual matching work was ~2.5% of samples, and the rest was its busy-spin loop reading an empty input ring — it wasn't working, it was starved, spinning on nothing. That put the constraint upstream of the engine, in the path that feeds it orders, which is not where a CPU profile points, because the culprit wasn't burning CPU. It was asleep. The journal thread, which writes every order to a durable log, was blocked in an uninterruptible disk `fsync`, and a sampling profiler counts on-CPU work, so a thread parked waiting for the disk barely registers.
+
+<JournalCoupling />
+
+The bug was ordering. Ingress wrote each order to the journal before handing it to the engine, over a bounded queue, so when the disk fell behind the queue filled, admission blocked, and the engine starved. My own spec says in three places that a slow journal must never gate the engine — durability is explicitly relaxed, since losing the last few milliseconds on a crash is acceptable for a live event — so this was a bug against the design rather than a tradeoff to weigh, and the fix was to restore what the spec already required: hand the order to the engine first and tee it to the journal in parallel.
+
+<Callout type="warning" title="The fsync I mismeasured by 6000×">
+Before trusting that `fsync` was the wall, I benchmarked it on the server's disk. My first attempt rewrote a small fixed file and reported p50 0.3 µs — page-cache-resident, with no real durability barrier, and if I'd stopped there I'd have ruled out the disk and hunted in the wrong place. The journal doesn't rewrite a fixed file; it appends to a growing one, which forces the filesystem to flush new metadata as well, and reproducing that pattern gave p50 1.9 ms. That lands where it should: 64 orders per 1.9 ms is ~34,000 a second, the plateau I'd been stuck at. The append-benchmark rate, the measured plateau, and the journal-lag counter pinned at its channel cap all pointed at the same ~34k. The lesson is to measure the mechanism the way it actually runs, not a convenient proxy.
+</Callout>
+
+The ceiling roughly doubled, from ~31k to ~54k orders/s, with no order ack lost or reordered at any rate. It is the first change in the hunt that moved the number, and it addressed something no flamegraph had ranked, because the cost was off-CPU.
+
+<Callout type="lesson" title="A green test suite proved the wrong thing">
+This fix carried a scar worth more than the win. Enlarging the durability batch to make the disk more efficient silently widened the durability window. The journal flushed on an idle-gap timer that reset on every arrival, which is fine when orders are sparse, but under sustained load the timer never fires, so the only remaining flush trigger became the batch count, and that stretched a few-millisecond window into hundreds of milliseconds of acknowledged-but-unflushed fills. My full suite stayed green, because it proved determinism — replay the log, get the identical round — which says nothing about how long a fill sits unflushed. A reviewer caught it by reasoning about the mechanism, not from a failing test. A performance knob had been coupled to a correctness property through a third mechanism, and nothing was testing that seam.
+</Callout>
+
+## The engine looked bound again — the same busy-spin trap
+
+At the new knee I profiled once more, and the headline was the same: the engine at 99.9%, the top symbol by a wide margin — the same busy-spin misread as before. That it was waiting rather than working shows in the in-system latency of 10 µs p50; the rest of the time it was spinning on a full output ring, waiting for its slowest consumer to take an item.
+
+The real top cost sat three seats down from the hottest thread: that consumer cloning each message into a per-client replay buffer, 14.7% memmove plus 5.6% allocator, under a lock, while the threads that actually write to sockets sat idle and starved. So I made the message reference-counted, shared behind an `Arc` so buffering, broadcasting, and encoding all use one copy instead of a deep clone per event, and verified it was clone-free with a pointer-equality test. The knee moved from 53,995 to 53,987 orders/s — eight acks, inside noise.
+
+Two correct, verified fixes, and neither moved the number, because both times I'd fixed the profiler's hottest cost rather than the actual constraint. What named the wall wasn't the flamegraph but the latency split: in-system latency was 10 µs p50 while the client-observed "network" component was 16.8 ms p50, about 1700× larger, with the server 55% idle. The constraint was in delivery, upstream of everything I'd been optimizing, and the server wasn't CPU-bound at all.
+
+## Localizing the wall with `ss`, not `perf`
+
+The null result forced a different move: before touching another line, measure where the queue is building. It was either the server's outbound side (it can't push market data out) or the load generators' inbound side (the clients can't read fast enough), and the two call for opposite fixes. Having built two null results by guessing, I read socket-queue depth on every box.
+
+<TwoSidedQueue />
+
+The server's inbound queue held 126 MB of orders it hadn't read yet, its outbound queue 43 KB, and both load generators drained to near zero. So the load generators were reading fine and the wall was the server failing to read its own inbound socket, because everything behind it was saturated. When the routing consumer can't drain fast enough, the engine stalls on ring space, stops consuming input, and the kernel's inbound queue balloons. That also explained the 16.8 ms "network" latency: in-system time is stamped after a task reads the frame off the socket, so an order's wait in the server's own inbound queue falls outside it and gets charged to the network. The standing inbound backlog and that 16.8 ms are the same phenomenon: the client's stopwatch was measuring the queue, not the wire.
+
+## The rig was the limiter again — the load generators
+
+To push the server past ~54k I had to offer it more than ~54k, and at those rates the load generators became the ceiling. Each burned ~700% CPU and pegged its 8-vCPU box above ~80k offered, so a run there measured the generator, not the server — the same class of trap as `perf` slowing the thread it sampled.
+
+The cause was on the read side. Every simulated client fully deserialized every frame, and the heaviest are the market-data broadcasts: 250 clients each parsing a full 99-level book snapshot 20 times a second, plus a JSON parse per trade print — none of which the load generator uses. It records acks, fills, and rejects and folds a couple of gap counters; the book ladders and trade bodies are parsed and thrown away. So I split the inbound parse in two: deserialize a slim borrowed header — type tag, sequence number, and a snapshot's market and sequence id, skipping the body vectors — and deep-parse only the ack, fill, and reject frames the metrics consume.
+
+The discipline is *parse less, not read less*. The socket still drains every frame, because if the client stops reading, the server's egress queue backs up and trips the slow-client eviction I was trying to measure. Skipping the parse of a frame I've already pulled off the socket changes nothing the server observes. With that plus a move from two load boxes to four, the generators dropped to 47–85% idle at every rate. That's why the sharding win below has two numbers: with the old generators, sharding got the server to ~85k before they co-limited the run; only after fixing the instrument did the clean ~97k knee appear.
+
+## Sharding the delivery path — the second doubling
+
+The wall itself was structural: one thread drained the engine's output ring and routed every event to all 250 client lanes, so delivery was a single serial stage no matter how idle the other cores sat. The fix from the part-one plan was to split it across cores, and the design question was how to split it without reintroducing the shared-state hazards the single-writer engine existed to avoid.
+
+<ShardingTopology />
+
+I partitioned clients across N shards (default 4) by `user_id % N`. Each shard is one dedicated busy-poll thread that owns a disjoint subset of clients end to end: its own cursor into the output ring, its own set of per-client lanes, its own egress lock. Every shard sees every event off the ring and routes only the ones for clients it owns, so exactly one shard acts on each per-client message and no two shards ever touch the same lane. The elegance is that almost none of this was new machinery. The output ring was already a Disruptor-style multicast with independent per-consumer cursors and a producer that gates on the slowest consumer, built that way in part one for the market-data reader — so going from one routing consumer to N is just asking the ring for N cursors instead of one, and each shard does 1/N of the routing with no fan-out layer, no extra copy, and no intermediate queues.
+
+<Callout type="note" title="The alternatives, and why client-hashing won">
+Two other partitions were on the table. Sharding by market splits the engine and book side, not delivery, and it fractures one client's stream across shards — a client trades all four racers at once — which breaks the per-client ordering guarantee. A work-stealing pool, where any worker can pick up any client, load-balances better but puts every client lane back under shared access with cross-thread ordering hazards, undoing the reason for a single owner. Static hashing by client keeps each client's whole stream on one thread, which makes its reliable lane single-owner and its sequence numbers monotonic for free, and it matches what the spec already prescribed for the egress pool. The cost I accepted is that one shard whose clients are all slow can still gate the engine exactly as the single consumer could — sharding doesn't fix that pathological case, but because each shard now does a quarter of the work, the slowest consumer is faster than the old single one, so the gating pressure drops rather than rises.
+</Callout>
+
+Sharding preserves the invariants that matter. Per-client sequence numbers stay gap-free because each client is owned by exactly one shard for its whole session. The leaderboard is replicated on every shard rather than shared, which is safe only because it's a deterministic pure aggregation over an identical event stream — every shard computes a byte-identical board — and the one non-idempotent action, writing the durable results archive at settlement, is gated to shard 0 so there's a single writer. A differential test drives two shards with the same interleaved stream and asserts each delivers only its own clients' acks with sequence `[1, 2, 3]` and that neither tracks the other's state; another asserts that removing either shard-0 guard makes a second shard wrongly write shared state. At N=1 the whole thing collapses back to the pre-sharding single-consumer topology, so the old tests run unchanged.
+
+With four shards and the fixed load generators, the clean server knee was ~97k orders/s, up from ~54k, with `reliable_gaps=0` at every rate including deep overload. The profile at that knee shows the single pegged consumer is gone:
+
+<ShardedSplit />
+
+Where one thread had held 100% of a core routing everything, the work now spreads evenly across the four shards (balanced within 3%) and the socket writes across the tokio workers — the machine is broadly busy rather than bottlenecked on one stage, which is the shape you want. The top remaining cost is memory movement in the socket-write path, `memset` plus `memmove` at ~11.5% of samples, copying encoded frames out to 250 connections.
+
+## Capping the snapshot bytes — a third null result
+
+That memmove was the obvious next target. If the cost is copying frame bytes out to clients, sending fewer bytes should help, and the fattest frames are the book snapshots. So I capped each snapshot to the ten price levels nearest the spread — which is all a client renders anyway — cutting a snapshot that had been carrying ~49 levels a side down to 10. The change was correct, passed review, and moved the knee from 97.3k to 97.7k. Nothing.
+
+The reason is a distinction the flamegraph doesn't make on its own: the memmove is dominated by message *count*, not payload *size*. At the knee the market-data lane sends ~5,000 snapshot frames a second — 250 clients at 20 Hz, with trade prints already batched into that same tick — against ~97,000 ack frames a second on the reliable lane, one per acknowledged order. So the reliable acks outnumber snapshot frames by roughly 19×, the snapshots were always a minority of the frames moved, and trimming their depth moves a fraction of that minority — a rounding error against total CPU, which is what the flat knee showed. It refines the earlier lesson rather than repeating it: the profiler pointed at the memmove correctly, and the memmove was real, but "optimize what the profile shows" needs "and confirm it's the dominant contributor, not merely a contributor." The lever that would actually move this knee is the frame count itself — fewer, denser frames per client per tick — not the size of any one frame. I scoped that rather than guessing at it, which is the discipline three null results have now taught me.
+
+## What the hunt taught me
+
+The ceiling went from ~31k to ~54k once the journal stopped gating admission, then to ~97k once delivery was sharded across cores — with correctness holding at every step. For the event that's far more headroom than 250 clients at ten orders a second will ever need; the point was finding what actually sets the ceiling, and being able to trust the answer.
+
+Three things, all about not trusting the obvious signal:
+
+- **You can't predict bottleneck N+1 from N.** The constraint was in turn a data-volume firehose, async-runtime overhead, an I/O-coupling bug, allocation under a lock, a serial delivery stage, and then message count over payload size. Each fix changed what the next problem was.
+- **The profiler's hottest line is not the constraint.** Three times I fixed exactly what the flamegraph put on top and moved the knee by nothing — CPU% on a busy-spin thread is no signal at all. The two fixes that did move it addressed what a sampling profiler couldn't rank: an `fsync` asleep off-CPU, and a serial stage that only `ss` could localize. So the number to re-measure is the end-to-end knee, not the local cost removed.
+- **The measurement rig is part of the system.** Above ~80k the load generators out-burned the server parsing market data they never used, so the run measured the instrument, not the server. The fix was to the instrument — the same trap as part one's single load box, one layer up.
+
+The engine from part one still hasn't broken a sweat. Everything hard about making this exchange fast was the fan-out from one writer to many readers — the seam part one said I'd have to fix, with five other things in the way first.

@@ -1,0 +1,104 @@
+---
+// Small-multiple: the CPU profile at four points in the hunt, stacked so the eye reads
+// top-to-bottom how the dominant cost changes character each time. Each row shows only
+// the top few self-time categories (real numbers from the folded perf stacks). The
+// point isn't the exact bars — it's that a DIFFERENT thing owns the top every time, and
+// twice the top thing (marked) turned out not to be the constraint at all.
+// Percentages are self-time from the folded perf captures at each stage.
+const stages = [
+  {
+    when: 'at the start', top: 'market-data fan-out',
+    note: 'one broadcast + frame per trade, to 250 clients',
+    real: true,
+    bars: [
+      { n: 'MD broadcast + refcount', p: 20, hot: true },
+      { n: 'WS send', p: 11 },
+      { n: 'runtime / scheduler', p: 11 },
+      { n: 'reliable-lane encode', p: 0.4, guess: true },
+    ],
+  },
+  {
+    when: 'after batching MD', top: 'async-runtime tax',
+    note: 'the routing thread is 92% runtime overhead, 8% work',
+    real: true,
+    bars: [
+      { n: 'tokio scheduler + clock', p: 43, hot: true },
+      { n: 'epoll + waking 250 tasks', p: 27 },
+      { n: 'actual routing work', p: 8 },
+    ],
+  },
+  {
+    when: 'after leaving the runtime', top: 'the engine, at 100% — doing nothing',
+    note: 'spinning on an empty ring; the real cost is a thread asleep on disk',
+    real: false,
+    bars: [
+      { n: 'engine spin (empty ring)', p: 45, hot: true, lie: true },
+      { n: 'engine actual matching', p: 2.5 },
+      { n: 'journal fsync (off-CPU)', p: 0, off: true },
+    ],
+  },
+  {
+    when: 'after decoupling the journal', top: 'per-event clone + alloc',
+    note: 'cloning each message into a replay buffer under a lock',
+    real: false,
+    bars: [
+      { n: 'engine spin (waiting)', p: 22.9, lie: true },
+      { n: 'clone into replay buffer', p: 14.7, hot: true },
+      { n: 'allocator churn', p: 5.6, hot: true },
+      { n: 'WS socket write', p: 1.5 },
+    ],
+  },
+];
+const rowW = 640, barTrack = 300, labelW = 210, barH = 15, rowGap = 6;
+const rowHeight = (s) => 30 + s.bars.length * (barH + rowGap) + 10;
+const maxP = 45;
+---
+<figure class="chart pseq">
+  {stages.map((s, i) => {
+    const H = rowHeight(s);
+    return (
+      <div class="pseq-row">
+        <div class="pseq-head">
+          <span class="pseq-when">{s.when}</span>
+          <span class="pseq-arrow">→</span>
+          <span class="pseq-top">{s.top}</span>
+          {!s.real && <span class="pseq-flag">profiler misread it</span>}
+        </div>
+        <div class="pseq-note">{s.note}</div>
+        <svg viewBox={`0 0 ${rowW} ${H - 40}`} role="img" aria-label={`${s.when}: the top cost is ${s.top}. ${s.note}`}>
+          {s.bars.map((b, j) => {
+            const y = j * (barH + rowGap) + 4;
+            const w = b.off ? 0 : (Math.min(b.p, maxP) / maxP) * barTrack;
+            const color = b.hot ? 'var(--accent)' : b.lie ? 'var(--warning)' : b.guess ? 'var(--warning)' : 'var(--muted)';
+            return (
+              <g>
+                <text x={labelW - 8} y={y + barH / 2 + 4} text-anchor="end" class={b.hot ? 'lbl hot' : 'lbl'}>{b.n}</text>
+                {b.off
+                  ? <text x={labelW + 4} y={y + barH / 2 + 4} class="offcpu">off-CPU — no sample</text>
+                  : <rect x={labelW} y={y} width={Math.max(w, 2)} height={barH} rx="2" fill={color} opacity={b.guess ? 0.55 : 1} />}
+                {!b.off && <text x={labelW + Math.max(w, 2) + 6} y={y + barH / 2 + 4} class="val">{b.p}%{b.guess ? ' — my guess' : ''}</text>}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  })}
+  <figcaption>The CPU profile at four points in the hunt, top self-time categories only (accent = the real constraint that stage, amber = a cost that misled me). Read top to bottom: a different thing owns the profile every time. Twice the biggest number wasn't the bottleneck — the engine pegs 100% of a core by spinning, whether or not it's the constraint, and the fix that actually mattered was a thread asleep on disk with no CPU sample at all.</figcaption>
+</figure>
+
+<style>
+  .pseq { margin: 1.75rem 0; }
+  .pseq .pseq-row { padding: 0.5rem 0; border-top: 1px solid var(--border); }
+  .pseq .pseq-row:first-of-type { border-top: none; }
+  .pseq .pseq-head { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; }
+  .pseq .pseq-when { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+  .pseq .pseq-arrow { color: var(--muted); }
+  .pseq .pseq-top { font-size: 14px; font-weight: 600; color: var(--fg); font-family: var(--font-sans); }
+  .pseq .pseq-flag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: var(--warning); font-family: var(--font-sans); }
+  .pseq .pseq-note { font-size: 11.5px; color: var(--muted); font-family: var(--font-sans); margin: 0.1rem 0 0.35rem; }
+  .pseq :global(.lbl) { font-size: 11.5px; fill: var(--fg); font-family: var(--font-sans); }
+  .pseq :global(.lbl.hot) { font-weight: 600; }
+  .pseq :global(.val) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .pseq :global(.offcpu) { font-size: 11px; fill: var(--warning); font-family: var(--font-mono); font-style: italic; }
+</style>
