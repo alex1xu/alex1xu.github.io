@@ -78,7 +78,7 @@ const midY = 158;
     <text x={cx.clients} y={midY + 9} text-anchor="middle" class="bs">clients</text>
     <text x={cx.clients} y={midY + 24} text-anchor="middle" class="tag">sockets</text>
   </svg>
-  <figcaption>The v2 delivery path. Ingress stamps each order with a sequence number and tees it to the durable journal in parallel with handing it to the engine; the single-writer engine matches off a lock-free inbound ring and emits events into an outbound <em>multicast</em> ring. Four projection shards and one market-data consumer each read that ring on their own cursor, the producer gating on the slowest. Shards route per-client acks and fills onto <span class="acck">reliable lanes</span> (sequence-numbered, a gap is a bug); the market-data consumer broadcasts snapshots on the <span class="mutk">lossy lane</span> (drops self-heal on the next tick). Tokio workers write both out to 250 sockets. Every round in this post is a bottleneck somewhere on this path.</figcaption>
+  <figcaption>The v2 delivery path; every round in this post is a bottleneck somewhere on it. Ingress tees each order to the durable journal in parallel with handing it to the single-writer engine, which matches off a lock-free inbound ring and emits events into an outbound <em>multicast</em> ring. Four projection shards and one market-data consumer each read that ring on their own cursor, the producer gating on the slowest. Shards route acks and fills onto <span class="acck">reliable lanes</span> (sequence-numbered, a gap is a bug); the market-data consumer broadcasts snapshots on the <span class="mutk">lossy lane</span> (drops self-heal on the next tick). Tokio workers write both out to 250 sockets.</figcaption>
 </figure>
 
 <style>

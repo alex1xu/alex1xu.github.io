@@ -46,7 +46,7 @@ const fill = (k) => k === 'accent' ? 'var(--accent)' : k === 'spin' ? 'var(--bor
       );
     })}
   </svg>
-  <figcaption>CPU self-time at the ~97k knee, by thread group — the sharded profile, as a breakdown rather than a flamegraph. There is no single pegged consumer: the routing that one thread used to do serially now spreads across four projection shards balanced within 3% of each other, the socket writes spread across the eight tokio workers, and the engine's 16% is busy-spin, not work. The largest real cost is the <code>memset</code>/<code>memmove</code> inside the socket-write path (~11.5% of all samples) — copying encoded frames out to 250 connections, which scales with message count, not frame size.</figcaption>
+  <figcaption>CPU self-time at the ~97k knee, by thread group. The single pegged consumer is gone: routing now spreads across four projection shards (balanced within 3%), socket writes across the eight tokio workers, and the engine's 16% is busy-spin, not work. The top cost is now <code>memset</code>/<code>memmove</code> in the socket-write path (~11.5% of samples), copying encoded frames out to 250 connections.</figcaption>
 </figure>
 
 <style>

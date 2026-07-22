@@ -73,7 +73,7 @@ const risers = pts.slice(1).map((p, idx) => ({ i: idx + 1, from: pts[idx].v, to:
       <text x={left + plotW + 44} y={top + 50} class="leg">rig change</text>
     </g>
   </svg>
-  <figcaption>The delivery ceiling across the hunt, in the order I hit each round — sustained acked orders/s up the y-axis. The first step is a dashed <em>re-baseline</em>, not a fix: moving off part one's 2-box rig onto a fully isolated one reset the honest starting number to ~27k. Three correct, verified fixes are <em>flat treads</em>: they did exactly what they were designed to and moved the ceiling by nothing. Almost the whole climb to ~97k is two risers — decoupling the journal <code>fsync</code> and sharding the delivery path across cores.</figcaption>
+  <figcaption>The delivery ceiling across the hunt, in the order I hit each round (sustained acked orders/s up the y-axis). The first step is a re-baseline, not a fix: moving off part one's 2-box rig onto a fully isolated one reset the honest starting number to ~27k. The three flat treads are correct, verified fixes that moved the ceiling by nothing. Almost the whole climb to ~97k is two risers: decoupling the journal <code>fsync</code>, then sharding delivery across cores.</figcaption>
 </figure>
 
 <style>

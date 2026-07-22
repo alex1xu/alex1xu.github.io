@@ -77,7 +77,7 @@ const W = 720, H = 388;
       </marker>
     </defs>
   </svg>
-  <figcaption>The delivery path before and after sharding. The wall was one routing thread fanning every event out to all 250 client lanes serially. The output ring, though, was already a Disruptor-style multicast where each consumer has its own cursor and the producer gates on the slowest — built that way in part one for the market-data reader. So sharding is just asking the ring for four cursors instead of one: each shard thread sees every event, routes only the ~62 clients it owns by <code>user_id % 4</code>, and holds those clients' lanes and egress lock end to end, so no two shards ever touch the same lane and each client's sequence numbers stay gap-free. No fan-out layer, no extra copy — the routing simply runs on four cores at once.</figcaption>
+  <figcaption>The delivery path before and after sharding. The wall was one routing thread fanning every event out to all 250 client lanes serially. Since the output ring was already a Disruptor-style multicast (each consumer has its own cursor, the producer gates on the slowest), sharding is just asking it for four cursors instead of one. Each shard thread sees every event but routes only the ~62 clients it owns by <code>user_id % 4</code>, holding those clients' lanes end to end — so no two shards touch the same lane, and the routing runs on four cores at once.</figcaption>
 </figure>
 
 <style>

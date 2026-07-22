@@ -38,7 +38,7 @@ const ticks = [ [10_000,'10 KB'], [1_000_000,'1 MB'], [100_000_000,'100 MB'] ];
       );
     })}
   </svg>
-  <figcaption>Peak socket-queue depth per box at the 60k knee, log scale (thick bar = inbound recv-Q, thin = outbound send-Q). The server's inbound queue holds <strong>126 MB</strong> of orders it hasn't read yet, while its send-Q is 43 KB and both loadgens sit near zero on both sides. The load generators aren't failing to read; the server can't read its own inbound socket because everything behind it is saturated, and that inbound wait is the same delay the client's stopwatch was blaming on the network — the 16.8 ms was queue time, not wire time.</figcaption>
+  <figcaption>Peak socket-queue depth per box at the 60k knee, log scale (thick bar = inbound recv-Q, thin = outbound send-Q). The server's inbound queue holds <strong>126 MB</strong> of unread orders; its send-Q is 43 KB and both load generators sit near zero. The wall is the server failing to read its own inbound socket.</figcaption>
 </figure>
 
 <style>

@@ -52,7 +52,7 @@ const W = 680, H = 220;
       <path d={`M205,2 Q205,-16 300,-16 Q355,-16 355,0`} fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#jc-arr)" />
     </g>
   </svg>
-  <figcaption>The change that doubled the ceiling. Before, an order was written to the durable journal — a ~1.9 ms disk <code>fsync</code>, batched — <em>before</em> it reached the matching engine, so when the disk fell behind, new orders couldn't enter and the engine sat idle with nothing to match. That directly violated the design rule that a slow journal must never gate the engine. After, the order reaches the engine immediately and is teed to the journal in parallel; the disk can fall as far behind as it likes without ever blocking admission. 64 commands per 1.9 ms <code>fsync</code> works out to ~34k/s — exactly the plateau it had been stuck at.</figcaption>
+  <figcaption>The change that doubled the ceiling. Before, each order was written to the durable journal — a ~1.9 ms disk <code>fsync</code>, batched — <em>before</em> reaching the engine, so when the disk fell behind, admission blocked and the engine starved. After, the order reaches the engine immediately and is teed to the journal in parallel, so the disk can lag freely without gating admission.</figcaption>
 </figure>
 
 <style>
