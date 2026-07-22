@@ -546,7 +546,7 @@ p { margin-bottom: 1rem; }
 .log-panel[data-panel="calendar"] { position: relative; }
 
 .cal-popover {
-  position: absolute;
+  position: fixed;
   z-index: 20;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -554,7 +554,9 @@ p { margin-bottom: 1rem; }
   padding: 0.85rem 1rem;
   box-shadow: 0 4px 16px rgba(50,43,37,0.10);
   width: 270px;
-  max-width: calc(100vw - 2rem);
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
 }
 
 .pop-item + .pop-item { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }

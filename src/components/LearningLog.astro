@@ -249,13 +249,22 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
     popoverEl.hidden = false;
     cell.classList.add('popped');
     openCell = cell;
-    // Position below the cell
+    // Position with viewport (fixed) coordinates so the popover never grows the
+    // document — an absolutely-positioned popover below a bottom-row cell used to
+    // extend the page, spawn a scrollbar, and reflow the whole centred layout.
     const cr = cell.getBoundingClientRect();
-    const lr = log.getBoundingClientRect();
-    const top = cr.bottom - lr.top + 6;
-    const left = Math.min(cr.left - lr.left, lr.width - 280);
+    const pw = popoverEl.offsetWidth;
+    const ph = popoverEl.offsetHeight;
+    const margin = 6, edge = 8;
+    // Prefer below the cell; flip above when there isn't room below and above has more.
+    const spaceBelow = window.innerHeight - cr.bottom;
+    let top = (spaceBelow < ph + margin + edge && cr.top > spaceBelow)
+      ? cr.top - ph - margin
+      : cr.bottom + margin;
+    top = Math.max(edge, Math.min(top, window.innerHeight - ph - edge));
+    let left = Math.max(edge, Math.min(cr.left, window.innerWidth - pw - edge));
     popoverEl.style.top = `${top}px`;
-    popoverEl.style.left = `${Math.max(0, left)}px`;
+    popoverEl.style.left = `${left}px`;
   }
 
   function closePopover() {
