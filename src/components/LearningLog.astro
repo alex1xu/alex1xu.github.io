@@ -4,7 +4,7 @@ import learning from '../data/learning.json';
 type Status = 'done' | 'upcoming';
 interface Link { label: string; url: string; }
 interface Entry {
-  date: string; title: string;
+  date: string; endDate?: string; title: string;
   status: Status; phase?: string; repo?: string; links?: Link[]; blog?: string;
 }
 const entries = learning as Entry[];
@@ -14,30 +14,58 @@ const MONTH_FULL = ['January','February','March','April','May','June','July','Au
 const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const fmt = (d: string) => { const [,m,day] = d.split('-').map(Number); return `${MONTHS[m-1]} ${day}`; };
+// A task may span several days; show "Jul 27 – 28" (drop the month on the end when unchanged).
+const fmtRange = (e: Entry) => {
+  if (!e.endDate || e.endDate === e.date) return fmt(e.date);
+  const sameMonth = e.date.slice(0,7) === e.endDate.slice(0,7);
+  return `${fmt(e.date)} – ${sameMonth ? e.endDate.split('-')[2].replace(/^0/,'') : fmt(e.endDate)}`;
+};
 
 const upcoming = entries.filter(e => e.status === 'upcoming').sort((a,b) => a.date < b.date ? -1 : 1);
 const done     = entries.filter(e => e.status === 'done').sort((a,b) => a.date > b.date ? -1 : 1);
 const listEntries = [...upcoming, ...done];
 
-// Calendar
-const byDate = new Map<string, Entry[]>();
-for (const e of entries) { const l = byDate.get(e.date) ?? []; l.push(e); byDate.set(e.date, l); }
-const monthKeys = [...new Set(entries.map(e => e.date.slice(0,7)))].sort();
+// ── Calendar: expand each entry across the weekdays it spans ──
+// UTC helpers keep the day arithmetic off the server's local timezone.
+const DAY = 86400000;
+const toUTC = (s: string) => Date.parse(s + 'T00:00:00Z');
+const isoOf = (t: number) => new Date(t).toISOString().slice(0, 10);
+const isWeekend = (t: number) => { const g = new Date(t).getUTCDay(); return g === 0 || g === 6; };
+function spanDays(e: Entry): string[] {
+  const end = toUTC(e.endDate ?? e.date);
+  const days: string[] = [];
+  for (let t = toUTC(e.date); t <= end; t += DAY) if (!isWeekend(t)) days.push(isoOf(t));
+  return days;
+}
+
+// coverage: every weekday a task touches → the tasks active that day (with edge markers)
+interface Cover { entry: Entry; isStart: boolean; isEnd: boolean; }
+const coverage = new Map<string, Cover[]>();
+for (const e of entries) {
+  const days = spanDays(e);
+  days.forEach((d, i) => {
+    const l = coverage.get(d) ?? [];
+    l.push({ entry: e, isStart: i === 0, isEnd: i === days.length - 1 });
+    coverage.set(d, l);
+  });
+}
+
+const monthKeys = [...new Set([...coverage.keys()].map(d => d.slice(0,7)))].sort();
 const months = monthKeys.map(key => {
   const [y,m] = key.split('-').map(Number);
   const cells: (number|null)[] = [];
-  for (let i = 0; i < new Date(y,m-1,1).getDay(); i++) cells.push(null);
-  for (let d = 1; d <= new Date(y,m,0).getDate(); d++) cells.push(d);
+  for (let i = 0; i < new Date(Date.UTC(y,m-1,1)).getUTCDay(); i++) cells.push(null);
+  for (let d = 1; d <= new Date(Date.UTC(y,m,0)).getUTCDate(); d++) cells.push(d);
   return { key, label: `${MONTH_FULL[m-1]} ${y}`, cells };
 });
 const cellDate = (k: string, d: number) => `${k}-${String(d).padStart(2,'0')}`;
-const cellStatus = (es: Entry[]): Status => es.some(e => e.status === 'upcoming') ? 'upcoming' : 'done';
+const cellStatus = (cs: Cover[]): Status => cs.some(c => c.entry.status === 'upcoming') ? 'upcoming' : 'done';
 
-// Serialise entry data for popover (strip to what JS needs)
+// Serialise entry data for popover (strip to what JS needs), keyed by each covered day
 const popoverData = Object.fromEntries(
-  [...byDate.entries()].map(([date, es]) => [
+  [...coverage.entries()].map(([date, cs]) => [
     date,
-    es.map(e => ({ title: e.title, phase: e.phase ?? '', links: e.links ?? [] }))
+    cs.map(c => ({ title: c.entry.title, range: fmtRange(c.entry), phase: c.entry.phase ?? '', links: c.entry.links ?? [] }))
   ])
 );
 ---
@@ -62,7 +90,7 @@ const popoverData = Object.fromEntries(
     <ol class="log-list">
       {listEntries.map(e => (
         <li class="log-entry" data-group={e.status}>
-          <div class="log-date">{fmt(e.date)}</div>
+          <div class="log-date">{fmtRange(e)}</div>
           <div class="log-body">
             <div class="log-head">
               <i class:list={['dot', e.status]}></i>
@@ -89,24 +117,31 @@ const popoverData = Object.fromEntries(
     </div>
   </div>
 
-  <!-- Calendar view -->
+  <!-- Calendar view — one month at a time, arrows step between months -->
   <div class="log-panel" data-panel="calendar" hidden>
-    {months.map(mo => (
-      <div class="cal-block">
-        <div class="cal-label">{mo.label}</div>
+    <div class="cal-nav">
+      <button type="button" class="cal-arrow" data-cal-nav="prev" aria-label="Previous month">◀</button>
+      <span class="cal-nav-label" aria-live="polite"></span>
+      <button type="button" class="cal-arrow" data-cal-nav="next" aria-label="Next month">▶</button>
+    </div>
+    {months.map((mo, i) => (
+      <div class="cal-block" data-month={mo.key} hidden={i !== 0}>
         <div class="cal-grid">
           {WEEKDAYS.map(w => <div class="cal-weekday">{w}</div>)}
           {mo.cells.map(day => {
             if (day === null) return <div class="cal-cell empty"></div>;
-            const es = byDate.get(cellDate(mo.key, day));
-            if (!es) return <div class="cal-cell"><span class="day-num">{day}</span></div>;
-            const s = cellStatus(es);
+            const cs = coverage.get(cellDate(mo.key, day));
+            if (!cs) return <div class="cal-cell"><span class="day-num">{day}</span></div>;
+            const s = cellStatus(cs);
             const dateKey = cellDate(mo.key, day);
+            const isStart = cs.some(c => c.isStart);
+            const isEnd = cs.some(c => c.isEnd);
             return (
-              <div class={`cal-cell has-entry s-${s}`} data-date={dateKey}
-                   tabindex="0" role="button" aria-label={es.map(e=>e.title).join(', ')}>
+              <div class:list={['cal-cell', 'has-entry', `s-${s}`, isStart && 'span-start', isEnd && 'span-end', !isStart && !isEnd && 'span-mid']}
+                   data-date={dateKey}
+                   tabindex="0" role="button" aria-label={cs.map(c=>c.entry.title).join(', ')}>
                 <span class="day-num"><i class:list={['dot', s]}></i>{day}</span>
-                <span class="cell-label">{es.map(e=>e.title).join(' · ')}</span>
+                {isStart && <span class="cell-label">{cs.filter(c=>c.isStart).map(c=>c.entry.title).join(' · ')}</span>}
               </div>
             );
           })}
@@ -130,8 +165,23 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
   const moreBtn = log.querySelector<HTMLButtonElement>('.log-more')!;
   const lessBtn = log.querySelector<HTMLButtonElement>('.log-less')!;
   const popoverEl = log.querySelector<HTMLElement>('.cal-popover')!;
-  const popoverData: Record<string, Array<{title:string; phase:string; links:{label:string;url:string}[]}>> =
+  const popoverData: Record<string, Array<{title:string; range:string; phase:string; links:{label:string;url:string}[]}>> =
     JSON.parse(log.dataset.popover || '{}');
+
+  // Calendar month paging
+  const monthBlocks = Array.from(log.querySelectorAll<HTMLElement>('.cal-block'));
+  const monthKeys = monthBlocks.map(b => b.dataset.month!);
+  const navLabel = log.querySelector<HTMLElement>('.cal-nav-label');
+  const navPrev = log.querySelector<HTMLButtonElement>('[data-cal-nav="prev"]');
+  const navNext = log.querySelector<HTMLButtonElement>('[data-cal-nav="next"]');
+  // Default to the current month if it has entries, else the nearest month that does.
+  const todayKey = new Date().toISOString().slice(0, 7);
+  let monthIdx = (() => {
+    const exact = monthKeys.indexOf(todayKey);
+    if (exact !== -1) return exact;
+    const after = monthKeys.findIndex(k => k >= todayKey);
+    return after === -1 ? monthKeys.length - 1 : after;
+  })();
 
   let view = 'list', filter = 'upcoming', shown = initial;
 
@@ -159,6 +209,20 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
     if (view !== 'calendar') closePopover();
   }
 
+  // ── Calendar month paging ────────────────────────────────
+  const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function monthLabelFor(key: string) {
+    const [y, m] = key.split('-').map(Number);
+    return `${MONTH_FULL[m - 1]} ${y}`;
+  }
+  function renderMonth() {
+    closePopover();
+    monthBlocks.forEach((b, i) => (b.hidden = i !== monthIdx));
+    if (navLabel) navLabel.textContent = monthLabelFor(monthKeys[monthIdx]);
+    if (navPrev) navPrev.disabled = monthIdx === 0;
+    if (navNext) navNext.disabled = monthIdx === monthBlocks.length - 1;
+  }
+
   // ── Calendar popover ─────────────────────────────────────
   let openCell: HTMLElement | null = null;
 
@@ -171,7 +235,8 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
             `<li><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}</a></li>`
           ).join('')}</ul>`
         : '';
-      return `<div class="pop-item"><strong>${item.title}</strong>${item.phase ? `<div class="pop-phase">${item.phase}</div>` : ''}${linksHtml}</div>`;
+      const meta = [item.range, item.phase].filter(Boolean).join(' · ');
+      return `<div class="pop-item"><strong>${item.title}</strong>${meta ? `<div class="pop-phase">${meta}</div>` : ''}${linksHtml}</div>`;
     }).join('');
   }
 
@@ -239,7 +304,10 @@ document.querySelectorAll<HTMLElement>('.log').forEach(log => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     log.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   });
+  navPrev?.addEventListener('click', () => { if (monthIdx > 0) { monthIdx--; renderMonth(); } });
+  navNext?.addEventListener('click', () => { if (monthIdx < monthBlocks.length - 1) { monthIdx++; renderMonth(); } });
   renderView();
   renderList();
+  renderMonth();
 });
 </script>

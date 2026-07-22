@@ -46,17 +46,18 @@ Filename = URL slug (`hello-world.mdx` → `/blog/hello-world`). Every post gets
 **Update the learning log** — edit `src/data/learning.json`. Add or change one object; nothing else to touch:
 
 ```json
-{ "date": "2026-06-20", "title": "Short heading", "status": "upcoming",
+{ "date": "2026-06-20", "endDate": "2026-06-23", "title": "Short heading", "status": "upcoming",
   "phase": "Phase 0 · D1",
   "links": [{ "label": "topic or paper", "url": "https://..." }] }
 ```
 
 - `status`: `"upcoming"` or `"done"` (only two).
+- `endDate` (optional): last day of a multi-day task. Both list and calendar show the range (`Jun 20 – 23`); the calendar tints every weekday it spans (weekends are skipped), with the label on the first day. Omit for a single-day entry.
 - `links` (optional): array of `{"label": "...", "url": "..."}` — the day's study/resource list, shown clickable in the list view and the calendar hover/click popover. Keep labels descriptive (they stand in for a separate bullet list) and don't repeat a URL already used on another day.
 - `phase` (optional): label like `"Phase 0 · D1"` shown as a subdued line.
 - `repo` (optional): an `owner/name` string. The repo chip is currently commented out in `LearningLog.astro` — uncomment it there to surface repos.
 - `blog` (optional): a post slug to link "Read the write-up →".
-- The List view shows the next **5** upcoming with a "Show more" toggle and Upcoming/Done filter; the Calendar view renders a month grid with click/hover popovers. Both derive entirely from this file.
+- The List view shows the next **5** upcoming with a "Show more" toggle and Upcoming/Done filter; the Calendar view shows one month at a time with ◀ ▶ nav (defaults to the current month, else the nearest upcoming) and click/hover popovers. Both derive entirely from this file.
 
 ## Voice & style — blog posts and site content ONLY
 
