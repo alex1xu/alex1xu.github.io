@@ -26,8 +26,6 @@ I raised my exchange's ceiling from 20k to 97k orders per second through six rou
 - At one point the load generators burned more CPU parsing market data than the server spent producing it and capped out at ~80k orders a second.
 </Callout>
 
-The exchange architecture I got to by the end of this post:
-
 <SystemDataflow />
 
 <CeilingStaircase />
@@ -36,13 +34,11 @@ The exchange architecture I got to by the end of this post:
 
 In part one I wasn't sure how much of the ~20k ceiling was the server versus my single load box, and where on the delivery path the cost sat. So I profiled, expecting the per-client message re-encode I'd flagged in part one to be the bottleneck, however that path only came out at 0.4% of CPU. The actual firehose was market data: every trade was broadcast individually to 250 receivers and written as its own frame, and broadcast delivery plus the reference-counting on the shared buffers came to about a fifth of CPU, and a third once the socket writes those frames drove are counted with it. The dropped-frame counter showed 6 million in 15 seconds (about 13 drops per order).
 
-The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one hadn't failed; it had removed the serde layer that was masking the broadcast machinery beneath it.
+The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one wasn't ineffective, it had removed the serde layer that was masking the broadcast machinery beneath it.
 
-Those two are the two egress lanes, and they have opposite contracts:
+Delivery splits into two lanes with opposite contracts. The reliable lane is per-client and sequence-numbered, a missing ack is a bug, so overload evicts a client rather than dropping its message. The lossy lane is one broadcast of latest-only market data, where a dropped frame self-heals on the next 20 Hz tick. 
 
-<EgressLanes />
-
-Trades ride the lossy, latest-only lane, so coalescing them into one frame per 20 Hz tick drops nothing a client is entitled to. Dropped frames went from ~1 million per run to zero, in-system p99 at 30k fell from 4.2 ms to 262 µs, and the eviction cliff vanished. But the sustained knee only crept from ~27k to a ~31k plateau that held flat across 40k, 50k, and 60k offered with half the machine idle — a serialization limit, not CPU exhaustion.
+Trades ride the lossy, latest-only lane, so coalescing them into one frame per 20 Hz tick drops nothing a client is entitled to. Dropped frames went from ~1 million per run to zero, in-system p99 at 30k fell from 4.2 ms to 262 µs, and the eviction cliff vanished. But the sustained knee only crept from ~27k to a ~31k plateau that held flat across 40k, 50k, and 60k offered with half the machine idle indicating a serialization limit, not CPU exhaustion.
 
 The profile at four points in the hunt, stacked so the dominant cost reads top-to-bottom as it changes character. In two of the four, the largest number in the profile is not the constraint:
 
@@ -50,11 +46,9 @@ The profile at four points in the hunt, stacked so the dominant cost reads top-t
 
 ## The pegged thread was mostly runtime overhead
 
-Re-profiling after the batching fix, one worker was still pegged while six idled. That worker was the routing consumer, the single task that drains the engine's output and hands each event to the right client, and the natural reading is that the stage is expensive and should be made cheaper. Breaking down its core said otherwise: the tokio runtime machinery — scheduler, `clock_gettime`, epoll, timer wheel — came to most of it, waking the 250 downstream tasks another ~9%, and the actual routing work ~8%. About 92% of the pegged core was async-runtime overhead rather than the routing the thread existed to do. The cause is specific: the consumer is an async task that is almost always ready, because there is almost always an event waiting, so it never yields for lack of work. Each poll runs to the end of its scheduling budget, reschedules itself, and gets re-polled, repaying the full task machinery and a `clock_gettime` every cycle. It was a busy-poll loop paying full async-task overhead — the machinery around the work cost roughly 12× the work itself.
+After the batching fix, I re-profiled and found one worker was still pegged while six idled. That worker was the routing consumer, the single task that drains the engine's output and hands each event to the right client. I thought naturally, this stage is expensive and should be made cheaper. However when I broken down its core I foudn that tokio runtime (scheduler, `clock_gettime`, epoll, timer wheel) came to most of it, waking the 250 downstream tasks another ~9%, and the actual routing work ~8%. About 92% of the pegged core was async-runtime overhead rather than the routing the thread existed to do.
 
-So I moved it off the async runtime onto a dedicated busy-poll thread, the way the engine already runs. It did exactly what it was designed to: the thread's CPU dropped from 99% to ~30%, and machine idle rose from ~52% to ~65%. The knee stayed at ~31k.
-
-That is the first null result. The fix was correct and it freed a whole core, but throughput didn't move, because the pegged-CPU thread and the throughput-limiting stage were not the same thing.
+The reason for this is because the consumer is an async task that is almost always ready (there is almost always an event waiting), so it never yields for lack of work. Each poll runs to the end of its scheduling budget, reschedules itself, and gets re-polled, repaying the full async-task overhead every cycle. So, I moved it off the async runtime onto a dedicated busy-poll thread, the way the engine already runs. After this fix, the thread's CPU dropped from 99% to ~30%, and machine idle rose from ~52% to ~65%. However, while the fix was correct and it freed a whole core, throughput didn't move.
 
 ## An `fsync` gating admission — invisible to the profiler
 
