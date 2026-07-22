@@ -240,7 +240,8 @@
     ]
   },
   {
-    "date": "2026-06-18",
+    "date": "2026-07-27",
+    "endDate": "2026-07-28",
     "title": "Parallelism landscape and collective communication",
     "status": "upcoming",
     "phase": "Phase 2 · D14",
@@ -272,7 +273,8 @@
     ]
   },
   {
-    "date": "2026-06-19",
+    "date": "2026-07-29",
+    "endDate": "2026-07-31",
     "title": "Data-parallel training (DDP) from scratch",
     "status": "upcoming",
     "phase": "Phase 2 · D15",
@@ -292,7 +294,8 @@
     ]
   },
   {
-    "date": "2026-06-22",
+    "date": "2026-08-03",
+    "endDate": "2026-08-04",
     "title": "ZeRO-1 optimizer-state partitioning",
     "status": "upcoming",
     "phase": "Phase 2 · D16",
@@ -312,7 +315,8 @@
     ]
   },
   {
-    "date": "2026-06-23",
+    "date": "2026-08-05",
+    "endDate": "2026-08-06",
     "title": "Tensor parallelism (Megatron)",
     "status": "upcoming",
     "phase": "Phase 2 · D17",
@@ -328,7 +332,8 @@
     ]
   },
   {
-    "date": "2026-06-29",
+    "date": "2026-08-07",
+    "endDate": "2026-08-10",
     "title": "Pipeline parallelism (1F1B)",
     "status": "upcoming",
     "phase": "Phase 2 · D18",
@@ -340,7 +345,8 @@
     ]
   },
   {
-    "date": "2026-06-30",
+    "date": "2026-08-11",
+    "endDate": "2026-08-12",
     "title": "Recomputation, mixed precision, and overlap",
     "status": "upcoming",
     "phase": "Phase 2 · D19",
@@ -352,7 +358,8 @@
     ]
   },
   {
-    "date": "2026-07-01",
+    "date": "2026-08-13",
+    "endDate": "2026-08-14",
     "title": "Mixture-of-experts and expert parallelism",
     "status": "upcoming",
     "phase": "Phase 2 · D20",
@@ -376,7 +383,8 @@
     ]
   },
   {
-    "date": "2026-07-02",
+    "date": "2026-08-17",
+    "endDate": "2026-08-18",
     "title": "Sequence parallelism and checkpoint/restore",
     "status": "upcoming",
     "phase": "Phase 2 · D21",
@@ -392,13 +400,15 @@
     ]
   },
   {
-    "date": "2026-07-03",
+    "date": "2026-08-19",
+    "endDate": "2026-08-21",
     "title": "Distributed training run on 8×H100",
     "status": "upcoming",
     "phase": "Phase 2 · D22"
   },
   {
-    "date": "2026-07-06",
+    "date": "2026-08-24",
+    "endDate": "2026-08-26",
     "title": "Distributed training: scaling study",
     "status": "upcoming",
     "phase": "Phase 2 · D23",
@@ -418,7 +428,8 @@
     ]
   },
   {
-    "date": "2026-07-07",
+    "date": "2026-08-27",
+    "endDate": "2026-08-28",
     "title": "Inference fundamentals: prefill, decode, KV cache",
     "status": "upcoming",
     "phase": "Phase 3 · D24",
@@ -446,7 +457,8 @@
     ]
   },
   {
-    "date": "2026-07-07",
+    "date": "2026-08-31",
+    "endDate": "2026-09-01",
     "title": "Attention variants for serving: MQA and GQA (KV-cache reduction)",
     "status": "upcoming",
     "phase": "Phase 3 · D24",
@@ -462,7 +474,8 @@
     ]
   },
   {
-    "date": "2026-07-08",
+    "date": "2026-09-02",
+    "endDate": "2026-09-03",
     "title": "Paged KV cache (PagedAttention)",
     "status": "upcoming",
     "phase": "Phase 3 · D25",
@@ -478,7 +491,8 @@
     ]
   },
   {
-    "date": "2026-07-09",
+    "date": "2026-09-04",
+    "endDate": "2026-09-07",
     "title": "Continuous-batching scheduler (Orca)",
     "status": "upcoming",
     "phase": "Phase 3 · D26",
@@ -494,7 +508,8 @@
     ]
   },
   {
-    "date": "2026-07-10",
+    "date": "2026-09-08",
+    "endDate": "2026-09-09",
     "title": "Radix-tree prefix cache (RadixAttention)",
     "status": "upcoming",
     "phase": "Phase 3 · D27",
@@ -510,7 +525,8 @@
     ]
   },
   {
-    "date": "2026-07-13",
+    "date": "2026-09-10",
+    "endDate": "2026-09-11",
     "title": "Inference server and CUDA graphs",
     "status": "upcoming",
     "phase": "Phase 3 · D28",
@@ -526,13 +542,15 @@
     ]
   },
   {
-    "date": "2026-07-14",
+    "date": "2026-09-14",
+    "endDate": "2026-09-16",
     "title": "Inference engine: benchmark vs vLLM",
     "status": "upcoming",
     "phase": "Phase 3 · D29"
   },
   {
-    "date": "2026-07-15",
+    "date": "2026-09-17",
+    "endDate": "2026-09-18",
     "title": "Weight-only quantization (GPTQ/AWQ)",
     "status": "upcoming",
     "phase": "Phase 3 · D30",
@@ -556,7 +574,8 @@
     ]
   },
   {
-    "date": "2026-07-16",
+    "date": "2026-09-21",
+    "endDate": "2026-09-22",
     "title": "Speculative decoding",
     "status": "upcoming",
     "phase": "Phase 3 · D31",
@@ -584,7 +603,8 @@
     ]
   },
   {
-    "date": "2026-07-17",
+    "date": "2026-09-23",
+    "endDate": "2026-09-24",
     "title": "Low-bit kernels and chunked prefill",
     "status": "upcoming",
     "phase": "Phase 3 · D32",
@@ -616,19 +636,22 @@
     ]
   },
   {
-    "date": "2026-07-20",
+    "date": "2026-09-25",
+    "endDate": "2026-09-29",
     "title": "Inference engine: hardening and ablations",
     "status": "upcoming",
     "phase": "Phase 3 · D33"
   },
   {
-    "date": "2026-07-21",
+    "date": "2026-09-30",
+    "endDate": "2026-10-02",
     "title": "Inference engine: final benchmarks and write-up",
     "status": "upcoming",
     "phase": "Phase 3 · D34"
   },
   {
-    "date": "2026-07-22",
+    "date": "2026-10-05",
+    "endDate": "2026-10-06",
     "title": "ML compiler stack: torch.compile internals",
     "status": "upcoming",
     "phase": "Phase 4 · D35",
@@ -640,7 +663,8 @@
     ]
   },
   {
-    "date": "2026-07-23",
+    "date": "2026-10-07",
+    "endDate": "2026-10-08",
     "title": "MLIR pass (Toy and tt-mlir)",
     "status": "upcoming",
     "phase": "Phase 4 · D36",
@@ -680,7 +704,8 @@
     ]
   },
   {
-    "date": "2026-07-24",
+    "date": "2026-10-09",
+    "endDate": "2026-10-12",
     "title": "Accelerator architectures: SIMT, dataflow, systolic",
     "status": "upcoming",
     "phase": "Phase 4 · D37",
@@ -696,43 +721,50 @@
     ]
   },
   {
-    "date": "2026-07-27",
+    "date": "2026-10-13",
+    "endDate": "2026-10-16",
     "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D38"
   },
   {
-    "date": "2026-07-28",
+    "date": "2026-10-19",
+    "endDate": "2026-10-22",
     "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D39"
   },
   {
-    "date": "2026-07-29",
+    "date": "2026-10-23",
+    "endDate": "2026-10-28",
     "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D40"
   },
   {
-    "date": "2026-07-30",
+    "date": "2026-10-29",
+    "endDate": "2026-11-03",
     "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 4 · D41"
   },
   {
-    "date": "2026-07-31",
+    "date": "2026-11-04",
+    "endDate": "2026-11-05",
     "title": "Mid-summer recap",
     "status": "upcoming",
     "phase": "Phase 4 · D42"
   },
   {
-    "date": "2026-08-10",
+    "date": "2026-11-06",
+    "endDate": "2026-11-10",
     "title": "Finishing and hardening core repos",
     "status": "upcoming",
     "phase": "Phase 7 · Buffer"
   },
   {
-    "date": "2026-08-24",
+    "date": "2026-11-11",
+    "endDate": "2026-11-16",
     "title": "Capstone: end-to-end nanochat run",
     "status": "upcoming",
     "phase": "Phase 7 · D58",
@@ -744,31 +776,36 @@
     ]
   },
   {
-    "date": "2026-08-25",
+    "date": "2026-11-17",
+    "endDate": "2026-11-20",
     "title": "OSS contribution",
     "status": "upcoming",
     "phase": "Phase 7 · D59"
   },
   {
-    "date": "2026-08-26",
+    "date": "2026-11-23",
+    "endDate": "2026-11-25",
     "title": "Outside review of the inference engine",
     "status": "upcoming",
     "phase": "Phase 7 · D60"
   },
   {
-    "date": "2026-08-27",
+    "date": "2026-11-26",
+    "endDate": "2026-11-27",
     "title": "Portfolio consolidation",
     "status": "upcoming",
     "phase": "Phase 7 · D61"
   },
   {
-    "date": "2026-08-28",
+    "date": "2026-11-30",
+    "endDate": "2026-12-01",
     "title": "Summer retrospective",
     "status": "upcoming",
     "phase": "Phase 7 · D62"
   },
   {
-    "date": "2026-09-01",
+    "date": "2026-12-02",
+    "endDate": "2026-12-03",
     "title": "JAX fundamentals: jit, grad, vmap, scan",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU",
@@ -796,7 +833,8 @@
     ]
   },
   {
-    "date": "2026-09-02",
+    "date": "2026-12-04",
+    "endDate": "2026-12-07",
     "title": "Pallas: the TPU kernel model",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU",
@@ -812,13 +850,15 @@
     ]
   },
   {
-    "date": "2026-09-03",
+    "date": "2026-12-08",
+    "endDate": "2026-12-09",
     "title": "FlashAttention forward in Pallas",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU"
   },
   {
-    "date": "2026-09-04",
+    "date": "2026-12-10",
+    "endDate": "2026-12-11",
     "title": "shard_map and GSPMD sharding",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU",
@@ -834,7 +874,8 @@
     ]
   },
   {
-    "date": "2026-09-08",
+    "date": "2026-12-14",
+    "endDate": "2026-12-15",
     "title": "XLA / StableHLO and TPU profiling",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU",
@@ -850,13 +891,15 @@
     ]
   },
   {
-    "date": "2026-09-09",
+    "date": "2026-12-16",
+    "endDate": "2026-12-17",
     "title": "JAX/TPU track write-up",
     "status": "upcoming",
     "phase": "Phase 5 · JAX/TPU"
   },
   {
-    "date": "2026-09-10",
+    "date": "2026-12-18",
+    "endDate": "2026-12-21",
     "title": "Low-precision numerics: MX and FP8 formats",
     "status": "upcoming",
     "phase": "Phase 6 · Chip/numerics",
@@ -876,7 +919,8 @@
     ]
   },
   {
-    "date": "2026-09-11",
+    "date": "2026-12-22",
+    "endDate": "2026-12-23",
     "title": "Block-scaled MX GEMM on the tensor-core path",
     "status": "upcoming",
     "phase": "Phase 6 · Chip/numerics",
@@ -892,19 +936,22 @@
     ]
   },
   {
-    "date": "2026-09-14",
+    "date": "2026-12-24",
+    "endDate": "2026-12-28",
     "title": "Numerics co-design study",
     "status": "upcoming",
     "phase": "Phase 6 · Chip/numerics"
   },
   {
-    "date": "2026-09-15",
+    "date": "2026-12-29",
+    "endDate": "2026-12-30",
     "title": "Chip / numerics track write-up",
     "status": "upcoming",
     "phase": "Phase 6 · Chip/numerics"
   },
   {
-    "date": "2026-09-17",
+    "date": "2026-12-31",
+    "endDate": "2027-01-01",
     "title": "To be continued",
     "status": "upcoming",
     "phase": "Beyond the sprint"
