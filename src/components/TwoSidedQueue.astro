@@ -1,0 +1,53 @@
+---
+// The ss -tn snapshot that localized the wall. Peak socket-queue depth per box at the
+// 60k knee. The server's INBOUND recv-Q (orders the server hasn't read yet) balloons to
+// 126 MB while its outbound send-Q stays tiny and both loadgens drain to ~0. That single
+// picture says: server-side, inbound-throttled — the loadgen is exonerated.
+const rows = [
+  { box: 'server', role: 'the exchange', recv: 126_000_000, send: 43_000, recvL: '126 MB', sendL: '43 KB', hot: true },
+  { box: 'loadgen 1', role: '125 clients', recv: 31_000, send: 21_000, recvL: '31 KB', sendL: '21 KB' },
+  { box: 'loadgen 2', role: '125 clients', recv: 25_000, send: 21_000, recvL: '25 KB', sendL: '21 KB' },
+];
+// log scale so 43 KB and 126 MB coexist on one axis
+const lo = 10_000, hi = 200_000_000;
+const W = 660, rowH = 54, top = 40, left = 120, barMax = 440, H = top + rows.length * rowH + 30;
+const lg = (v) => Math.log10(Math.max(v, lo));
+const x = (v) => ((lg(v) - lg(lo)) / (lg(hi) - lg(lo))) * barMax;
+const ticks = [ [10_000,'10 KB'], [1_000_000,'1 MB'], [100_000_000,'100 MB'] ];
+---
+<figure class="chart tsq">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Peak socket queue depth per box at the 60k knee, log scale. The server's inbound receive queue reaches 126 MB while its outbound send queue is 43 KB, and both loadgen boxes hold well under 50 KB on both sides. The wall is the server failing to read inbound orders, not the loadgens failing to read responses.">
+    <text x={left} y={20} class="hd">inbound recv-Q (unread by this box) · outbound send-Q</text>
+    {ticks.map(([v, lbl]) => (
+      <g>
+        <line x1={left + x(v)} y1={top - 6} x2={left + x(v)} y2={top + rows.length * rowH} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+        <text x={left + x(v)} y={top + rows.length * rowH + 16} text-anchor="middle" class="ax">{lbl}</text>
+      </g>
+    ))}
+    {rows.map((r, i) => {
+      const yb = top + i * rowH;
+      return (
+        <g>
+          <text x={left - 12} y={yb + 16} text-anchor="end" class={r.hot ? 'box hot' : 'box'}>{r.box}</text>
+          <text x={left - 12} y={yb + 30} text-anchor="end" class="role">{r.role}</text>
+          <rect x={left} y={yb + 4} width={Math.max(x(r.recv), 2)} height={16} rx="2" fill={r.hot ? 'var(--accent)' : 'var(--muted)'} />
+          <text x={left + Math.max(x(r.recv), 2) + 6} y={yb + 16} class={r.hot ? 'val hot' : 'val'}>{r.recvL}</text>
+          <rect x={left} y={yb + 24} width={Math.max(x(r.send), 2)} height={9} rx="2" fill="var(--border)" />
+          <text x={left + Math.max(x(r.send), 2) + 6} y={yb + 32} class="val dim">{r.sendL}</text>
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>Peak socket-queue depth per box at the 60k knee, log scale (thick bar = inbound recv-Q, thin = outbound send-Q). The server's inbound queue holds <strong>126 MB</strong> of unread orders; its send-Q is 43 KB and both load generators sit near zero. The wall is the server failing to read its own inbound socket.</figcaption>
+</figure>
+
+<style>
+  .tsq :global(.hd) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .tsq :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .tsq :global(.box) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .tsq :global(.box.hot) { fill: var(--accent); }
+  .tsq :global(.role) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .tsq :global(.val) { font-size: 12px; fill: var(--fg); font-family: var(--font-mono); }
+  .tsq :global(.val.hot) { fill: var(--accent); font-weight: 600; }
+  .tsq :global(.val.dim) { font-size: 10px; fill: var(--muted); }
+</style>

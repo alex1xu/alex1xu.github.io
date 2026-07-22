@@ -1,0 +1,67 @@
+---
+// A directional link to the other post in a two-part series. Renders as a bordered
+// bar with an arrow, a small kicker ("Part 2" / "Part 1"), and the target's title.
+// Usage: <SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="…" />
+interface Props {
+  dir: 'next' | 'prev';
+  href: string;
+  kicker: string;
+  title: string;
+}
+const { dir, href, kicker, title } = Astro.props;
+const arrow = dir === 'next' ? '→' : '←';
+---
+<a class={`series-nav series-${dir}`} href={href}>
+  {dir === 'prev' && <span class="series-arrow">{arrow}</span>}
+  <span class="series-text">
+    <span class="series-kicker">{kicker}</span>
+    <span class="series-title">{title}</span>
+  </span>
+  {dir === 'next' && <span class="series-arrow">{arrow}</span>}
+</a>
+
+<style>
+  .series-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin: 1.75rem 0;
+    padding: 0.8rem 1.1rem;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-left-color: var(--accent);
+    border-radius: 6px;
+    background: var(--bg-soft);
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .series-nav:hover {
+    border-color: var(--accent);
+    border-left-color: var(--accent);
+    background: #f7ece2;
+    text-decoration: none;
+  }
+  .series-next { text-align: right; }
+  .series-next .series-text { margin-left: auto; }
+  .series-prev .series-text { margin-right: auto; }
+  .series-text { display: flex; flex-direction: column; gap: 0.15rem; }
+  .series-next .series-text { align-items: flex-end; }
+  .series-kicker {
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .series-title {
+    font-size: 0.94rem;
+    color: var(--fg);
+    line-height: 1.3;
+  }
+  .series-arrow {
+    font-size: 1.15rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+</style>

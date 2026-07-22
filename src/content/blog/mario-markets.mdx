@@ -6,6 +6,7 @@ tags: ["rust", "systems", "trading", "orderbook", "performance", "lock-free"]
 ---
 
 import Callout from '../../components/Callout.astro';
+import SeriesNav from '../../components/SeriesNav.astro';
 import OldTopology from '../../components/OldTopology.astro';
 import ArrayLadder from '../../components/ArrayLadder.astro';
 import TwoFrontWall from '../../components/TwoFrontWall.astro';
@@ -15,6 +16,8 @@ import AblationBars from '../../components/AblationBars.astro';
 import HotPath from '../../components/HotPath.astro';
 import EgressProfile from '../../components/EgressProfile.astro';
 
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />
+
 This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets. Competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event.
 
 I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load (traders sent well under 1,000 orders a second in total during the competition) it worked, but not well. At the loudest moments of a race the latency got bad for some players. They'd fire an order and wait seconds to see it land. So over the following months I built a second version with three goals:
@@ -22,8 +25,6 @@ I sized it for the event, estimating roughly 150 people trading at maybe ten ord
 1. **No lag** at that load, with room to grow well past it, so that new competition modes like automated trading strategies could be supported.
 2. A **rigorously tested, fair, and durable engine**.
 3. **A design I could extend** with a new game each year without touching the engine code.
-
-The code for the rewrite is [on GitHub](https://github.com/alex1xu/orderbook-v2-public).
 
 <Callout type="lesson" title="TL;DR">
 The Python exchange (version one) that ran the competition, saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was primarily queueing delay, where orders piled up and p99 climbed into the tens of seconds. The Rust rewrite (version 2) handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap (though I hold this number loosely as they ran on different, but comparable, hardware).
@@ -191,3 +192,5 @@ I stopped trusting my own ranking of optimizations. The flat-array book was the 
 The load generator was the part I got most wrong, and I got it wrong the same way twice. It shared a core with its own result-draining and throttled itself, and later `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool measured itself instead of the server. A measurement rig runs on the same machine and competes for the same cores, so it couples to what it measures unless you design it not to. I build the measurement side first now and keep it out of the system's way.
 
 Testability turned out to be a property of the design, not a phase after it. The single writer and the sequence number made the engine a deterministic function of its input, and I didn't pick them for testing, but that one decision made testing cheap at every level. A reference book could check the fast one on every command, replaying the journal reproduced a round exactly, and because a regression showed up in seconds I could rewrite the hot path freely. When a system is hard to test, that's usually the design telling you it has hidden state or coupling to remove first.
+
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />

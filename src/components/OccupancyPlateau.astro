@@ -1,0 +1,64 @@
+---
+// Occupancy isolation: take the 21 TFLOP/s WMMA kernel and pad it with dead shared memory
+// that's never read, only reserved. Padding lowers how many blocks co-reside per SM (occupancy)
+// and changes nothing else — same FLOPs, same algorithm, same memory traffic. Throughput vs the
+// resulting blocks/SM (A100-40GB, B8 H16 d128 fp16, N=4096). The curve rises then flattens: above
+// ~5 blocks/SM it's a plateau at ~21, and the un-padded kernel already sits on it.
+// Data: 10 blk → 21.1, 6 → 19.9, 5 → 19.0, 3 → 13.8, 2 → 10.1 TFLOP/s.
+const data = [
+  { blk: 2,  tf: 10.1 },
+  { blk: 3,  tf: 13.8 },
+  { blk: 5,  tf: 19.0 },
+  { blk: 6,  tf: 19.9 },
+  { blk: 10, tf: 21.1 },
+];
+const xMax = 11, yMax = 24;
+const W = 680, H = 306, padL = 52, padR = 128, padT = 30, padB = 46;
+const plotW = W - padL - padR, plotH = H - padT - padB;
+const x = (b) => padL + (b / xMax) * plotW;
+const y = (v) => padT + (1 - v / yMax) * plotH;
+const pts = data.map((d) => `${x(d.blk)},${y(d.tf)}`).join(' ');
+const yGrid = [0, 6, 12, 18, 24];
+const xGrid = [2, 4, 6, 8, 10];
+const base = data[data.length - 1];      // 10 blk, 21.1 — the un-padded kernel
+const plateauX0 = x(5), plateauX1 = x(xMax);
+---
+<figure class="chart">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Throughput versus blocks per SM for the WMMA kernel padded with dead shared memory. From 2 blocks per SM at 10.1 TFLOP/s the curve climbs steeply to about 19 at 5 blocks, then flattens: 6 blocks gives 19.9 and 10 blocks gives 21.1. Above roughly 5 blocks per SM throughput plateaus near 21, and the un-padded kernel already runs at 10 blocks per SM, on that plateau. Adding occupancy past this point does not raise throughput.">
+    <rect x={plateauX0} y={padT} width={plateauX1 - plateauX0} height={plotH} fill="var(--done)" opacity="0.07" />
+    <text x={(plateauX0 + plateauX1) / 2} y={padT + 14} text-anchor="middle" class="zone">plateau ≈ 21 TF</text>
+
+    {yGrid.map((g) => (
+      <g>
+        <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="var(--border)" stroke-width="1" />
+        <text x={padL - 8} y={y(g) + 4} text-anchor="end" class="ax">{g}</text>
+      </g>
+    ))}
+    <text x={padL - 40} y={padT - 12} class="ax">TFLOP/s</text>
+
+    {xGrid.map((g) => (
+      <text x={x(g)} y={H - padB + 18} text-anchor="middle" class="ax">{g}</text>
+    ))}
+    <text x={padL + plotW / 2} y={H - 6} text-anchor="middle" class="ax">blocks per SM (occupancy)</text>
+
+    <polyline points={pts} fill="none" stroke="var(--accent)" stroke-width="2.5" />
+    {data.map((d) => <circle cx={x(d.blk)} cy={y(d.tf)} r="3.5" fill="var(--accent)" />)}
+
+    {/* mark the un-padded baseline */}
+    <circle cx={x(base.blk)} cy={y(base.tf)} r="6" fill="none" stroke="var(--fg)" stroke-width="1.5" />
+    <text x={x(base.blk) + 12} y={y(base.tf) - 4} class="note">the kernel,</text>
+    <text x={x(base.blk) + 12} y={y(base.tf) + 11} class="note">un-padded</text>
+    <text x={x(base.blk) + 12} y={y(base.tf) + 26} class="note-sub">10 blk, 21 TF</text>
+
+    {/* mark the low end */}
+    <text x={x(2) + 8} y={y(10.1) + 4} class="note-sub">2 blk, 10 TF</text>
+  </svg>
+  <figcaption>Padding the 21 TFLOP/s kernel with dead shared memory lowers blocks-per-SM and nothing else. Throughput climbs with occupancy up to ~5 blocks/SM and then flattens. The un-padded kernel already sits on that plateau, so more warps can't lift it past ~21.</figcaption>
+</figure>
+
+<style>
+  .chart :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-sans); }
+  .chart :global(.zone) { font-size: 11px; fill: var(--done); font-family: var(--font-sans); }
+  .chart :global(.note) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); }
+  .chart :global(.note-sub) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-mono); }
+</style>
