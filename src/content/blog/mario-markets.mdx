@@ -63,7 +63,7 @@ I didn't design v1 and then build it in one shot, it grew around the matching en
 
 - **The order book.** It started as a `SortedDict`, a balanced tree keyed by price. I later replaced it (more in v2).
 - **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load, because they contend for the same event loop, so I split it into a control plane and a separate gateway.
-- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. It meant a crash loses the round, since the durable copy only exists at the end, but for a live event where the fallback is re-running the race, each only a few minutes, I was fine with that.
+- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. It meant a crash loses the round, since the durable copy only exists at the end, but for a live event where the fallback is re-running the race, each only a few minutes, that was acceptable.
 - **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines with serialized access to the shared state.
 
 ### Where it broke down
