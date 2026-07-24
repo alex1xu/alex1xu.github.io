@@ -27,7 +27,7 @@ I sized it for the event, estimating roughly 150 people trading at maybe ten ord
 3. **A design I could extend** with a new game each year without touching the engine code.
 
 <Callout type="lesson" title="TL;DR">
-The Python exchange (version one) that ran the competition, saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was primarily queueing delay, where orders piled up and p99 climbed into the tens of seconds. The Rust rewrite (version 2) handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap (though I hold this number loosely as they ran on different, but comparable, hardware).
+The Python exchange (version one) that ran the competition saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was primarily queueing delay, where orders piled up and p99 climbed into the tens of seconds. The Rust rewrite (version 2) handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap (though I hold this number loosely as they ran on different, but comparable, hardware).
 
 Four things I didn't expect:
 
@@ -36,7 +36,7 @@ Four things I didn't expect:
 - **The engine was not the bottleneck.** When version 2 saturated, it idled while a single-threaded egress path that delivered fills back to 250 clients set the ceiling. I found this by taking the engine off the wire to measure it alone.
 - **My own tools lied to me twice.** The faulty version one load tester shared a core with its result-draining, making it measure itself instead of the server. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. 
 
-A few lessons I learned going forwards are to benchmark each optimization in isolation, since I couldn't predict which would win or by how much. The measurement rig is part of the system and fails the same ways it does. And designing for testability up front is what made the rest safe to optimize.
+A few things I took away from it. Benchmark each optimization in isolation, since I couldn't predict which would win or by how much. The measurement rig is part of the system and fails the same ways it does. And designing for testability up front is what made the rest safe to optimize.
 </Callout>
 
 ## How Mario Markets is played
@@ -63,7 +63,7 @@ I didn't design v1 and then build it in one shot, it grew around the matching en
 
 - **The order book.** It started as a `SortedDict`, a balanced tree keyed by price. I later replaced it (more in v2).
 - **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load, because they contend for the same event loop, so I split it into a control plane and a separate gateway.
-- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. The tradeoff I took knowingly was that a crash loses the round, since the durable copy only exists at the end. For a live event where the fallback is re-running the race, each only a few minutes, that was acceptable.
+- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. It meant a crash loses the round, since the durable copy only exists at the end, but for a live event where the fallback is re-running the race, each only a few minutes, I was fine with that.
 - **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines with serialized access to the shared state.
 
 ### Where it broke down
@@ -127,7 +127,7 @@ I benchmarked the flat array against the `BTreeMap` it replaced. The array bough
 
 ### No allocation while matching
 
-I thought that orders which allocate on insertion were a main cause for tail latency, though I didn't directly profile this. So, I designed the exchange to hold every resting order in a pre-sized object pool, and matching relinks slots through an intrusive list instead of asking for memory.
+I suspected that allocating on insertion was a big source of tail latency, though I never directly profiled it. So I designed the exchange to hold every resting order in a pre-sized object pool, and matching relinks slots through an intrusive list instead of asking for memory.
 
 Against the same book allocating each level on the heap, the pooled arena was worth **×5.3 throughput** and **×64 tail latency**, p99 dropping from 131 µs to 2 µs. Handing out a pre-reserved slot is bounded and constant-time every time, which is exactly why the tail collapses. I measured this on the `BTreeMap` book, so ×5.3 is the allocation cost on a tree of boxed nodes. On the flat array the multiple would differ.
 
@@ -157,7 +157,7 @@ Turns out it was on the output side. The engine publishes each event into an out
 
 Microsecond latency and zero evictions through 20k, then a cliff at 25k where all 250 clients evict at once and the client-observed p99 jumps into the milliseconds. With ring depth zero and a ~1.4 µs loop, it's the fan-out to 250 subscribers falling behind while the engine underneath stays at ~16 µs.
 
-My worry was that 20k was just my single load box mistake again. So I split the load generator across several machines, each driving a slice of the 250-client roster. Three worker boxes didn't move the plateau past ~20,500 orders a second. So the wall was not my sender, the constraint is how many receivers one engine box has to keep in sync.
+My worry was that 20k was just my single load box mistake again. So I split the load generator across several machines, each driving a slice of the 250-client roster. Three worker boxes didn't move the plateau past ~20,500 orders a second. The wall wasn't my sender after all. What set it was how many receivers one engine box has to keep in sync.
 
 To find which part of the fan-out binds, I profiled the engine box under a saturating 60k. Two threads pegged near 100%, the match core (which busy-spins) and exactly one worker. The other six sat between idle and a quarter. That one pegged worker is the projection, the single task draining the outbound ring and routing each event to the right one of 250 lanes. The tasks that actually serialize and write to sockets were spread across the idle workers, nowhere near saturated. So the wall isn't the socket writes or the wire format, it's one thread doing the routing serially. The fix and next step is to shard it across cores, which the ring design now makes safe.
 
