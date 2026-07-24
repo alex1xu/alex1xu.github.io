@@ -22,7 +22,7 @@ import ShardedSplit from '../../components/ShardedSplit.astro';
 <Callout type="lesson" title="TL;DR">
 I raised my exchange's ceiling from 20k to 97k orders per second through six rounds of profiling, optimizing, and load-testing. Each round was a different bottleneck.
 
-- Three fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler ranked highest, and capping the market-data snapshot to ten price levels. I verified each did exactly what it was designed to, but the knee held. I learned that the profiler's hottest item may not always be the constraint.
+- Three fixes moved throughput by nothing: taking a pegged routing thread off the async runtime, removing the allocation the profiler ranked highest, and capping the market-data snapshot to ten price levels. Each did exactly what it was designed to, but the knee held. I learned that the profiler's hottest item isn't always the actual constraint.
 - Batching per-trade broadcasts into 20 Hz ticks only nudged the knee ~27k→~31k, but mattered most for removing an eviction cliff.
 - Removing an `fsync` gating order admission, which is off-CPU work the profiler didn't rank, was a major fix (~31k→~54k). Sharding the single delivery thread across cores was also major (~54k→~97k).
 - At one point the load generators burned more CPU parsing market data than the server spent producing it and capped out at ~80k orders a second.
@@ -34,11 +34,11 @@ I raised my exchange's ceiling from 20k to 97k orders per second through six rou
 
 ## The delivery cost wasn't where part one guessed
 
-In part one I wasn't sure how much of the ~20k ceiling was the server versus my single load box, and where on the delivery path the cost sat. So I profiled, expecting the per-client message re-encode I'd flagged in part one to be the bottleneck — but that path only came out at 0.4% of CPU. The actual firehose was market data: every trade was broadcast individually to 250 receivers and written as its own frame, and broadcast delivery plus the reference-counting on the shared buffers came to about a fifth of CPU — a third once the socket writes those frames drive are counted too. The dropped-frame counter showed 6 million in 15 seconds (about 13 drops per order).
+In part one I wasn't sure how much of the ~20k ceiling was the server versus my single load box, and where on the delivery path the cost sat. So I profiled, expecting the per-client message re-encode I'd flagged in part one to be the bottleneck — but that path only came out at 0.4% of CPU. The real firehose was market data. Every trade was broadcast individually to 250 receivers, each written as its own frame, and that broadcast plus the reference-counting on the shared buffers came to about a fifth of CPU, a third once you count the socket writes it drove. The dropped-frame counter showed 6 million in 15 seconds (about 13 drops per order).
 
 <ProfilePanel stage="fanout" />
 
-The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one wasn't ineffective — it had removed the serde layer that was masking the broadcast machinery beneath it.
+The re-encode wasn't the cost because order acks are low-volume next to the trade firehose. The encode-once work from part one hadn't failed. It had just removed the serde layer that was masking the broadcast machinery beneath it.
 
 Delivery splits into two lanes with opposite contracts. The reliable lane is per-client and sequence-numbered, a missing ack is a bug, so overload evicts a client rather than dropping its message. The lossy lane is one broadcast of latest-only market data, where a dropped frame self-heals on the next 20 Hz tick.
 
@@ -54,16 +54,16 @@ The reason is that the consumer is an async task that's almost always ready — 
 
 ## An `fsync` gating admission — invisible to the profiler
 
-With the routing thread quiet, the profiler moved to a new headline: the engine, pegged at 99.9%, apparently engine-bound. But the engine's actual matching work was ~2.5% of samples, and the rest was its busy-spin loop reading an empty input ring — it wasn't working, it was starved, spinning on nothing. That put the constraint upstream of the engine, in the path that feeds it orders, which is not where a CPU profile points, because the culprit wasn't burning CPU. It was asleep. The journal thread, which writes every order to a durable log, was blocked in an uninterruptible disk `fsync`, and a sampling profiler counts on-CPU work, so a thread parked waiting for the disk barely registers.
+With the routing thread quiet, the profiler moved to a new headline. The engine was pegged at 99.9%, apparently engine-bound. But the engine's actual matching work was ~2.5% of samples, and the rest was its busy-spin loop reading an empty input ring — it wasn't working, it was starved, spinning on nothing. That put the constraint upstream of the engine, in the path that feeds it orders, which is not where a CPU profile points, because the culprit wasn't burning CPU. It was asleep. The journal thread, which writes every order to a durable log, was blocked in an uninterruptible disk `fsync`, and a sampling profiler counts on-CPU work, so a thread parked waiting for the disk barely registers.
 
 <ProfilePanel stage="journal" />
 
 <JournalCoupling />
 
-The bug was ordering. Ingress wrote each order to the journal before handing it to the engine, over a bounded queue, so when the disk fell behind the queue filled, admission blocked, and the engine starved. My own spec says in three places that a slow journal must never gate the engine — durability is explicitly relaxed, since losing the last few milliseconds on a crash is acceptable for a live event — so this was a bug against the design rather than a tradeoff to weigh, and the fix was to restore what the spec already required: hand the order to the engine first and tee it to the journal in parallel.
+The bug was ordering. Ingress wrote each order to the journal before handing it to the engine, over a bounded queue, so when the disk fell behind the queue filled, admission blocked, and the engine starved. My own spec says in three places that a slow journal must never gate the engine (durability is explicitly relaxed, since losing the last few milliseconds on a crash is acceptable for a live event), so this was a bug against the design rather than a tradeoff to weigh. The fix was to restore what the spec already required: hand the order to the engine first and tee it to the journal in parallel.
 
 <Callout type="warning" title="The fsync I mismeasured by 6000×">
-Before trusting that `fsync` was the wall, I benchmarked it on the server's disk. My first attempt rewrote a small fixed file and reported p50 0.3 µs — page-cache-resident, with no real durability barrier, and if I'd stopped there I'd have ruled out the disk and hunted in the wrong place. The journal doesn't rewrite a fixed file. It appends to a growing one, which forces the filesystem to flush new metadata too, and reproducing that pattern gave p50 1.9 ms. That lands where it should: 64 orders per 1.9 ms is ~34,000 a second, the plateau I'd been stuck at. The append-benchmark rate, the measured plateau, and the journal-lag counter pinned at its channel cap all pointed at the same ~34k. The lesson is to measure the mechanism the way it actually runs, not a convenient proxy.
+Before trusting that `fsync` was the wall, I benchmarked it on the server's disk. My first attempt rewrote a small fixed file and reported p50 0.3 µs — page-cache-resident, with no real durability barrier, and if I'd stopped there I'd have ruled out the disk and hunted in the wrong place. The journal doesn't rewrite a fixed file. It appends to a growing one, which forces the filesystem to flush new metadata too, and reproducing that pattern gave p50 1.9 ms. That lands where it should: 64 orders per 1.9 ms is ~34,000 a second, the plateau I'd been stuck at. The append-benchmark rate, the measured plateau, and the journal-lag counter pinned at its channel cap all pointed at the same ~34k. I'd been benchmarking a convenient proxy instead of the thing as it actually runs.
 </Callout>
 
 The ceiling roughly doubled, from ~31k to ~54k orders/s, with no order ack lost or reordered at any rate. It is the first change in the hunt that moved the number, and it addressed something no flamegraph had ranked, because the cost was off-CPU.
@@ -126,7 +126,7 @@ Where one thread had held a whole core routing everything, the work now spreads 
 
 That memmove was the obvious next target. If the cost is copying frame bytes to clients, sending fewer bytes should help, and the fattest frames are the book snapshots. So I capped each one to the ten price levels nearest the spread — all a client renders anyway — down from ~49 a side. Correct, passed review, moved the knee from 97.3k to 97.7k. Nothing.
 
-The catch is that the copy cost tracks the *number* of frames, not their size. At the knee the market-data lane sends ~5,000 snapshot frames a second, against ~97,000 acks on the reliable lane, one per order. Snapshots were always a small fraction of what gets copied, so shrinking them barely moved total CPU. This time the profiler had pointed at a real cost — the memmove was genuinely there — it just wasn't the *dominant* one. The lever that would actually move this knee is fewer frames per client, not smaller ones, which I left for later rather than guess at again.
+The catch is that the copy cost tracks the *number* of frames, not their size. At the knee the market-data lane sends ~5,000 snapshot frames a second, against ~97,000 acks on the reliable lane, one per order. Snapshots were always a small fraction of what gets copied, so shrinking them barely moved total CPU. This time the profiler had pointed at a real cost — the memmove was genuinely there — it just wasn't the *dominant* one. Having fewer frames per client, not smaller ones, would actually move this knee. I left that for later rather than guess at it again.
 
 ## What the hunt taught me
 

@@ -76,7 +76,7 @@ The second was underneath it. The server was also saturating. At the sub-300 ord
 
 <TwoFrontWall />
 
-The client could offer ~150–300/s and the server saturated at ~286/s, so the two ceilings sat on top of each other and I couldn't separate them. Bandwidth wasn't the issue (WebSocket traffic peaked around 3.7 MB/s). A load generator sharing a core with its own result-draining, blocking on each response, is part of the system under test. It measures the coupled pair, not the server. To measure the server, the generator has to be independent of it (i.e. open-loop, and on separate machines) so the thing you're measuring can't throttle your measurement.
+The client could offer ~150–300/s and the server saturated at ~286/s, so the two ceilings sat on top of each other and I couldn't separate them. Bandwidth wasn't the issue (WebSocket traffic peaked around 3.7 MB/s). To measure the server on its own, the generator has to be independent of it — open-loop, and on separate machines — so the thing I'm measuring can't throttle my measurement.
 
 Speed was the front I could see. Underneath it was a quieter problem. v1 gave me almost no way to know it hadn't corrupted itself, and both the load-testing gap and the correctness gap came from the same place, reasonable tradeoffs taken on a deadline that each left a seam.
 
