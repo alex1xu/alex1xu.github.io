@@ -126,7 +126,7 @@ Where one thread had held a whole core routing everything, the work now spreads 
 
 That memmove was the obvious next target. If the cost is copying frame bytes to clients, sending fewer bytes should help, and the fattest frames are the book snapshots. So I capped each one to the ten price levels nearest the spread — all a client renders anyway — down from ~49 a side. Correct, passed review, moved the knee from 97.3k to 97.7k. Nothing.
 
-The catch is that the copy cost tracks the *number* of frames, not their size. At the knee the market-data lane sends ~5,000 snapshot frames a second, against ~97,000 acks on the reliable lane, one per order. Snapshots were always a small fraction of what gets copied, so shrinking them barely moved total CPU. This time the profiler had pointed at a real cost — the memmove was genuinely there — it just wasn't the *dominant* one. Having fewer frames per client, not smaller ones, would actually move this knee. I left that for later rather than guess at it again.
+The catch is that the copy cost tracks the *number* of frames, not their size. At the knee the market-data lane sends ~5,000 snapshot frames a second, against ~97,000 acks on the reliable lane, one per order. Snapshots were always a small fraction of what gets copied, so shrinking them barely moved total CPU. This time the profiler had pointed at a real cost — the memmove was there — it just wasn't the *dominant* one. Having fewer frames per client, not smaller ones, would actually move this knee. I left that for later rather than guess at it again.
 
 ## What the hunt taught me
 

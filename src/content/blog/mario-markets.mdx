@@ -16,7 +16,7 @@ import AblationBars from '../../components/AblationBars.astro';
 import HotPath from '../../components/HotPath.astro';
 import EgressProfile from '../../components/EgressProfile.astro';
 
-<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Mario Markets part 2" />
 
 This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets. Competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event.
 
@@ -34,7 +34,7 @@ Four things I didn't expect:
 - **The speedup came from the design, not the language.** I measured each v2 optimization against its alternative on an identical replay. The dominant one was **not allocating while matching** — ×5.3 throughput and ×64 tail latency. Using an array-shaped order book was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk.
 - **Speed and correctness were the same decision.** The single writer that made matching fast is what made it race-free and deterministic, and determinism is what let me test against an independent reference book.
 - **The engine was not the bottleneck.** When version 2 saturated, it idled while a single-threaded egress path that delivered fills back to 250 clients set the ceiling. I found this by taking the engine off the wire to measure it alone.
-- **My own tools lied to me twice.** The faulty version one load tester shared a core with its result-draining, making it measure itself instead of the server. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. 
+- **My own tools lied to me twice.** The faulty version one load tester shared a core with its result-draining, making it measure itself instead of the server. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck.
 
 A few things I took away from it. Benchmark each optimization in isolation, since I couldn't predict which would win or by how much. The measurement rig is part of the system and fails the same ways it does. And designing for testability up front is what made the rest safe to optimize.
 </Callout>
@@ -111,7 +111,7 @@ An intrusive list through an object pool, cached best-price cursors, and O(1) re
 
 The test feeds both books the same randomly generated command stream and, after every command, checks that they emitted the same events and hold the same resting orders. The generator draws from a tiny space of four users and a handful of order IDs, which makes crossing trades and self-trade prevention fire constantly instead of almost never, heavy on cancels, across every order type. Each step also checks invariants directly on the fast book (e.g. positions net to zero per market, reserved collateral never goes negative, the book is never crossed at rest) so a bug that keeps both event streams equal but corrupts an invariant still gets caught. Determinism makes the replay path testable the same way. The engine is a pure function of its sequenced input, and the journal records exactly that input, so replaying the log has to reproduce the round exactly.
 
-The ring has concurrent code, so I model-check it with `loom`, which explores the ring's thread interleavings and asserts the consumer sees each item, in order, with nothing lost. 
+The ring has concurrent code, so I model-check it with `loom`, which explores the ring's thread interleavings and asserts the consumer sees each item, in order, with nothing lost.
 
 ## Optimizations
 
@@ -141,7 +141,7 @@ Durability off the hot path is only cheap if the `fsync` is amortized. On a real
 
 ### Where the real ceiling is
 
-At 20,000 orders a second offered to 250 clients, the engine acks about 18,000 at an in-system p50 of 2 µs and p99 of 33 µs, with nothing lost on a client's reliable lane. The load generator counts an ack only when the frame arrives back over the socket, so that ~18k is a full round-trip rate. The ~10% gap between offered and acked isn't loss, it's cancels chasing orders that already filled and correctly rejecting. I measure on the engine's own clock, ingress stamp to emit stamp, so it's immune to skew between machines and isn't the round trip to a browser. And the load generator is open-loop, firing on a fixed schedule regardless of when replies come back, which is the fix for exactly the trap that fooled me in v1.
+At 20,000 orders a second offered to 250 clients, the engine acks about 18,000 at an in-system p50 of 2 µs and p99 of 33 µs, with nothing lost on a client's reliable lane. The load generator counts an ack only when the frame arrives back over the socket, so that ~18k is a full round-trip rate. The ~10% gap between offered and acked isn't loss. It's clients canceling orders that already filled, which the engine correctly rejects. I measure on the engine's own clock, ingress stamp to emit stamp, so it's immune to skew between machines and isn't the round trip to a browser. And the load generator is open-loop, firing on a fixed schedule regardless of when replies come back, which is the fix for exactly the trap that fooled me in v1.
 
 I wanted to find where the bottleneck actually sat (without a profiler), so I took the engine off the wire and ran the matching loop in-process, pinned to one core with no network and no journal. In isolation the bare matching loop sustains **630,000–690,000 commands a second** (the durable engine is capped lower, at the ~32k/s the journal flushes). Either ceiling is far above the 20k the wire run topped out at, so the engine was never what gave out. It was idling while something downstream throttled it.
 
@@ -189,8 +189,8 @@ A few things stuck with me from building this.
 
 Optimizations can't just be theoretical, performance testing is a necessary step before shipping. I thought the flat-array book would lead to large performance gains (O(1) vs the tree's O(log n)), but it was only worth ×1.12 because at 99 levels the tree already fits in cache.
 
-I made the load generator wrong twice. First, it shared a core with its own result-draining and throttled itself. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool measured itself instead of the server. 
+I made the load generator wrong twice. First, it shared a core with its own result-draining and throttled itself. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool measured itself instead of the server.
 
-Testability is a property of a good design. The single writer and the sequence number made the engine a deterministic function of its input, and made testing cheap at every level. A reference book could check the fast one on every command, replaying the journal reproduced a round exactly, and because a regression showed up in seconds I could rewrite the hot path freely. 
+Testability is a property of a good design. The single writer and the sequence number made the engine a deterministic function of its input, and made testing cheap at every level. A reference book could check the fast one on every command, replaying the journal reproduced a round exactly, and because a regression showed up in seconds I could rewrite the hot path freely.
 
-<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Mario Markets part 2" />
