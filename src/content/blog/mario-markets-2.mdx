@@ -32,7 +32,7 @@ I raised my exchange's ceiling from 20k to 97k orders per second through six rou
 
 <CeilingStaircase />
 
-## The delivery cost wasn't where part one guessed
+## The delivery cost wasn't what part one guessed
 
 In part one I wasn't sure how much of the ~20k ceiling was the server versus my single load box, and where on the delivery path the cost sat. So I profiled, expecting the per-client message re-encode I'd flagged in part one to be the bottleneck — but that path only came out at 0.4% of CPU. The real firehose was market data. Every trade was broadcast individually to 250 receivers, each written as its own frame, and that broadcast plus the reference-counting on the shared buffers came to about a fifth of CPU, a third once you count the socket writes it drove. The dropped-frame counter showed 6 million in 15 seconds (about 13 drops per order).
 
@@ -82,11 +82,11 @@ The real cost sat three rows down. That consumer was cloning each message into a
 
 So I made the message reference-counted behind an `Arc`, so buffering, broadcasting, and encoding all share one copy instead of a deep clone per event, and I checked it was clone-free with a pointer-equality test. The knee moved from 53,995 to 53,987 orders/s — eight acks, inside noise.
 
-Another correct fix, another flat knee. What finally named the wall wasn't the profile, it was the latency split. In-system time was 10 µs p50, while the client-observed "network" time was 16.8 ms p50, about 1700× larger, and the server sat 55% idle the whole time. The bottleneck was somewhere in delivery, and the server wasn't CPU-bound at all.
+Another correct fix, another flat knee. The latency split is what finally showed the wall. In-system time was 10 µs p50, while the client-observed "network" time was 16.8 ms p50, about 1700× larger, and the server sat 55% idle the whole time. The bottleneck was somewhere in delivery, and the server wasn't CPU-bound at all.
 
-## Localizing the wall with `ss`, not `perf`
+## Localizing the wall with `ss`
 
-Two null results from guessing was enough. Before changing another line, I wanted to see where the queue was actually building — the server failing to push market data out, or the load generators failing to read it in. Those need opposite fixes, so instead of guessing a third time I read socket-queue depth on every box.
+Two null results from guessing, and that was enough. Before changing another line, I wanted to see where the queue was actually building — the server failing to push market data out, or the load generators failing to read it in. Those need opposite fixes, so instead of guessing a third time I read socket-queue depth on every box.
 
 <TwoSidedQueue />
 

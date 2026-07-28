@@ -123,7 +123,7 @@ A `SortedDict` was my original choice for an order book. But in this exchange, p
 
 <ArrayLadder />
 
-I benchmarked the flat array against the `BTreeMap` it replaced. The array bought **×1.12 throughput** and identical tail latency. Worth keeping, but surprisingly much smaller than I expected. I think part of the reason is at 99 levels the whole tree fits in cache, so the array's asymptotic edge shows less.
+I benchmarked the flat array against the `BTreeMap` it replaced. The array bought **×1.12 throughput** and identical tail latency. Worth keeping, but much smaller than I expected. At 99 levels the whole tree fits in cache, so the array's asymptotic edge barely shows.
 
 ### No allocation while matching
 
