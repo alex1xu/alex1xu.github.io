@@ -1,0 +1,150 @@
+---
+// A focused, interactive flamegraph of the server box at the ~54k knee (60k offered),
+// zoomed to the projection thread — the single consumer that gates the whole pipeline.
+// Click a frame to zoom into its subtree; click the root to reset; hover for the exact
+// self-time share. Widths are period-weighted self-time from the perf capture, verified
+// against the folded stacks and traced to source in analysis/postN3-60k-attribution.md.
+// The raw un-curated inferno SVG (with the broken-unwind [unknown] frames a cycles
+// profile leaves behind) is linked below for anyone who wants the unfiltered version.
+//
+// The story this frame tells: the engine at the top pins 100% of a core but is *spinning*,
+// not working (in-system latency is 8µs). The real cost is one row down and to the side —
+// the projection thread cloning every message into a per-client replay buffer (memmove +
+// malloc) under a process-global egress lock, while the socket-writing workers sit idle.
+const tree = {
+  name: 'server @ 54k knee', kind: 'root', self: 0, note: 'whole process, period-weighted CPU',
+  children: [
+    { name: 'engine thread — Engine::run', kind: 'spin', self: 22.9,
+      note: 'pegged 100% but SPINNING on a full outbound ring; matches in 8µs. CPU% here is not saturation.',
+      children: [
+        { name: 'match + risk (actual work)', kind: 'work', self: 0.2, note: 'OrderBook::apply + RiskEngine — microseconds' },
+      ] },
+    { name: 'projection thread — the gating consumer', kind: 'wall', self: 8.0,
+      note: 'single thread: drain ring → route each event to one of 250 lanes, under a global egress lock',
+      children: [
+        { name: 'ServerMsg clone → replay buffer (memmove)', kind: 'wall', self: 14.7,
+          note: 'deep-clone each message into a per-client VecDeque replay buffer, ~54k/s. The top real cost.' },
+        { name: 'allocator — per-event heap churn', kind: 'wall', self: 5.6,
+          note: '~54k malloc+free/s for those clones' },
+        { name: 'kernel spinlock — egress mutex + task wakes', kind: 'lock', self: 4.5,
+          note: 'process-global egress lock + waking 250 downstream egress tasks' },
+        { name: 'route + apply + hashmap', kind: 'work', self: 8.0, note: 'the actual routing logic + read-model updates' },
+      ] },
+    { name: 'tokio workers ×8 — socket writers', kind: 'idle', self: 3.1,
+      note: '33–47% each, STARVED. They serialize + write sockets but are under-fed by the one projection thread.',
+      children: [
+        { name: 'WS / tungstenite frame + write', kind: 'idle', self: 1.5, note: 'the actual socket write — tiny' },
+        { name: 'serde_json encode', kind: 'idle', self: 0.3, note: 'encode is off the projection thread, on these idle workers' },
+        { name: 'TCP kernel send', kind: 'idle', self: 1.0, note: '—' },
+      ] },
+    { name: 'MD broadcast recv (250 receivers)', kind: 'work', self: 1.6, note: 'second-order after the trade-batching fix; md_lagged=0' },
+  ],
+};
+const flameSrc = '/flamegraphs/post-n3-60k.svg';
+---
+<figure class="chart flame">
+  <div class="fl-head">
+    <span class="fl-title">Where the time goes at the knee — zoomed to the delivery path</span>
+    <span class="fl-hint">click a frame to zoom · click the top bar to reset</span>
+  </div>
+  <div class="fl-canvas" data-tree={JSON.stringify(tree)}></div>
+  <div class="fl-tip" hidden></div>
+  <figcaption>
+    Focused flamegraph of the server at the ~54k knee, period-weighted CPU self-time (traced to source,
+    not raw stacks). The engine bar is the tallest and pegs a full core — but it is <em>spinning</em> on a full
+    outbound ring, not matching (an order clears in 8&nbsp;µs). The real cost is the projection thread beside it,
+    deep-cloning every message into a per-client replay buffer (<code>memmove</code> + <code>malloc</code>) under a
+    global lock, while the eight workers that actually write sockets sit starved at 33–47%. The hottest bar is not
+    the constraint. <a href={flameSrc} target="_blank" rel="noopener">Open the full raw inferno profile ↗</a>
+  </figcaption>
+</figure>
+
+<script>
+  type Node = { name: string; kind: string; self: number; note?: string; children?: Node[] };
+  const KIND: Record<string, string> = {
+    root: 'var(--muted)', spin: 'var(--muted)', work: 'var(--accent-soft)',
+    wall: 'var(--accent)', lock: 'var(--warning)', idle: 'var(--border)',
+  };
+  const total = (n: Node): number => n.self + (n.children?.reduce((s, c) => s + total(c), 0) ?? 0);
+
+  document.querySelectorAll<HTMLElement>('.flame').forEach((root) => {
+    const canvas = root.querySelector<HTMLElement>('.fl-canvas')!;
+    const tip = root.querySelector<HTMLElement>('.fl-tip')!;
+    const data: Node = JSON.parse(canvas.dataset.tree!);
+    const ROW = 30, GAP = 2, PAD = 2;
+
+    // Layout: icicle top-down. Each node's width ∝ its total (self + descendants).
+    function render(focus: Node) {
+      canvas.innerHTML = '';
+      const grand = Math.max(total(focus), 0.001);
+      const rows: HTMLElement[] = [];
+      function place(n: Node, depth: number, x: number, w: number) {
+        while (rows.length <= depth) {
+          const r = document.createElement('div');
+          r.className = 'fl-row';
+          r.style.height = ROW + 'px';
+          canvas.appendChild(r); rows.push(r);
+        }
+        const el = document.createElement('button');
+        el.className = 'fl-frame fl-' + n.kind;
+        el.style.left = x + '%';
+        el.style.width = 'calc(' + w + '% - ' + GAP + 'px)';
+        const pct = ((total(n) / grand) * 100);
+        el.textContent = n.name;
+        el.title = '';
+        el.addEventListener('mouseenter', () => {
+          tip.hidden = false;
+          tip.innerHTML = '<strong>' + n.name + '</strong> · ' + n.self.toFixed(1) + '% self · '
+            + pct.toFixed(1) + '% of view' + (n.note ? '<br>' + n.note : '');
+        });
+        el.addEventListener('mousemove', (e) => {
+          const r = root.getBoundingClientRect();
+          tip.style.left = Math.min(e.clientX - r.left + 12, r.width - 260) + 'px';
+          tip.style.top = (e.clientY - r.top + 14) + 'px';
+        });
+        el.addEventListener('mouseleave', () => { tip.hidden = true; });
+        el.addEventListener('click', () => render(n === focus ? data : n));
+        rows[depth].appendChild(el);
+        // children laid out proportionally within this node's width
+        let cx = x;
+        const kids = (n.children ?? []).slice().sort((a, b) => total(b) - total(a));
+        for (const c of kids) {
+          const cw = (total(c) / grand) * 100;
+          place(c, depth + 1, cx, cw);
+          cx += cw;
+        }
+      }
+      place(focus, 0, 0, 100);
+      canvas.style.height = (rows.length * (ROW + PAD)) + 'px';
+    }
+    render(data);
+  });
+</script>
+
+<style>
+  .flame { margin: 1.75rem 0; position: relative; }
+  .flame .fl-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .flame .fl-title { font-size: 14px; font-weight: 600; color: var(--fg); font-family: var(--font-sans); }
+  .flame .fl-hint { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+  .flame .fl-canvas { position: relative; width: 100%; }
+  .flame .fl-row { position: relative; width: 100%; }
+  .flame .fl-frame {
+    position: absolute; height: calc(100% - 2px); box-sizing: border-box;
+    border: 1px solid var(--bg); border-radius: 2px; cursor: pointer;
+    font-size: 11px; font-family: var(--font-mono); color: var(--fg);
+    padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.9;
+  }
+  .flame .fl-root, .flame .fl-spin { background: var(--bg-soft); }
+  .flame .fl-work { background: var(--accent-soft); }
+  .flame .fl-wall { background: var(--accent); color: #fff; }
+  .flame .fl-lock { background: var(--warning); color: #fff; }
+  .flame .fl-idle { background: var(--border); color: var(--muted); }
+  .flame .fl-frame:hover { filter: brightness(1.06); outline: 1px solid var(--fg); }
+  .flame .fl-tip {
+    position: absolute; z-index: 5; max-width: 260px; pointer-events: none;
+    background: var(--fg); color: var(--bg); font-size: 11.5px; font-family: var(--font-sans);
+    padding: 0.4rem 0.55rem; border-radius: 5px; line-height: 1.35;
+  }
+  .flame .fl-tip :global(strong) { font-family: var(--font-mono); }
+</style>

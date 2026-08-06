@@ -1,0 +1,48 @@
+---
+// The single clearest "the wall is delivery, not compute" figure. At the knee, an order
+// clears the engine in 10µs (in-system, stamped ingress→emit on the server's own clock),
+// but the client sees 16.8ms of "network" — ~1700× larger. That gap is not the wire; it's
+// the order sitting in the server's saturated inbound socket queue before the server reads
+// it (in-system is stamped AFTER the read). Numbers: N4-60k.json + wall-diag verdict.
+const inSys = 0.010, network = 16.8; // ms
+const ratio = Math.round(network / inSys);
+const W = 660, H = 150, left = 130, barMax = 460, top = 40, rowH = 34;
+// log scale so 10µs and 16.8ms share an axis
+const lo = 0.005, hi = 30;
+const lg = (v) => Math.log10(v);
+const x = (v) => ((lg(v) - lg(lo)) / (lg(hi) - lg(lo))) * barMax;
+const ticks = [[0.01,'10µs'],[0.1,'100µs'],[1,'1ms'],[10,'10ms']];
+---
+<figure class="chart lsplit">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Latency split at the knee, log scale. In-system time, the order's whole life inside the engine, is 10 microseconds. The network component the client measures is 16.8 milliseconds, about 1700 times larger. The engine is not the wall; delivery is.">
+    {ticks.map(([v,l]) => (
+      <g>
+        <line x1={left + x(v)} y1={top - 6} x2={left + x(v)} y2={top + 2 * rowH} stroke="var(--border)" stroke-dasharray="2 4" opacity="0.5" />
+        <text x={left + x(v)} y={top + 2 * rowH + 16} text-anchor="middle" class="ax">{l}</text>
+      </g>
+    ))}
+    <g>
+      <text x={left - 12} y={top + 15} text-anchor="end" class="lbl">in-system</text>
+      <text x={left - 12} y={top + 28} text-anchor="end" class="sub">engine, own clock</text>
+      <rect x={left} y={top + 4} width={Math.max(x(inSys), 3)} height={16} rx="2" fill="var(--muted)" />
+      <text x={left + Math.max(x(inSys), 3) + 8} y={top + 16} class="val">10 µs</text>
+    </g>
+    <g>
+      <text x={left - 12} y={top + rowH + 15} text-anchor="end" class="lbl">"network"</text>
+      <text x={left - 12} y={top + rowH + 28} text-anchor="end" class="sub">client stopwatch</text>
+      <rect x={left} y={top + rowH + 4} width={x(network)} height={16} rx="2" fill="var(--accent)" />
+      <text x={left + x(network) + 8} y={top + rowH + 16} class="val hot">16.8 ms</text>
+    </g>
+    <text x={left + barMax} y={20} text-anchor="end" class="ratio">≈ {ratio}× — the wall is delivery, not the engine</text>
+  </svg>
+  <figcaption>Latency split at the knee, log scale. An order lives inside the engine for <strong>10&nbsp;µs</strong>; the client's stopwatch sees <strong>16.8&nbsp;ms</strong>. The engine was never the wall. And the 16.8&nbsp;ms isn't wire time either — in-system is stamped <em>after</em> a task reads the order off the socket, so the gap is the order waiting in the server's own saturated inbound queue before it's even read. The client blames the network; the truth is the server was too backed up to pick up.</figcaption>
+</figure>
+
+<style>
+  .lsplit :global(.ax) { font-size: 11px; fill: var(--muted); font-family: var(--font-mono); }
+  .lsplit :global(.lbl) { font-size: 13px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .lsplit :global(.sub) { font-size: 10px; fill: var(--muted); font-family: var(--font-sans); }
+  .lsplit :global(.val) { font-size: 12px; fill: var(--fg); font-family: var(--font-mono); }
+  .lsplit :global(.val.hot) { fill: var(--accent); font-weight: 600; }
+  .lsplit :global(.ratio) { font-size: 12px; fill: var(--accent); font-family: var(--font-sans); font-weight: 600; }
+</style>

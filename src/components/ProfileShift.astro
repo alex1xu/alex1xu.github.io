@@ -1,0 +1,51 @@
+---
+// Small multiples: the single top cost at each stage of the hunt, side by side, so the
+// CHANGE OF CHARACTER is visible at a glance without clicking anything. Each panel shows
+// the one symbol that owned the profile and what kind of problem it was — and a flag when
+// that top symbol turned out NOT to be the constraint. Shares are real (perf self-time,
+// verified against folded stacks + code): baseline analysis/perf-analysis-detail.md;
+// after-batching analysis/post-N1-50k-attribution.md; after-off-runtime & after-decouple
+// analysis/post-N2-40k + postN3-60k-attribution.md.
+const panels = [
+  { stage: 'baseline', top: 'MD broadcast fan-out', pct: 35, kind: 'data volume', verdict: 'real', why: 'one broadcast + WS frame per trade × 250 receivers' },
+  { stage: 'after batching trades', top: 'async-runtime tax', pct: 92, unit: 'of the pegged core', kind: 'runtime overhead', verdict: 'real', why: 'polling an always-ready future; ~8% is real work' },
+  { stage: 'after off-runtime', top: 'a thread asleep on fsync', pct: 0, unit: 'off-CPU', kind: 'I/O coupling', verdict: 'invisible', why: 'the engine spun idle; the real cost had no CPU sample' },
+  { stage: 'after decoupling', top: 'clone + alloc under a lock', pct: 20, kind: 'allocation', verdict: 'not the cap', why: 'top real cost — but removing it moved the knee zero' },
+];
+const W = 700, colW = W / panels.length, H = 200, top = 30, plotH = 110, base = top + plotH;
+const barMax = 90;
+const kindColor = (v) => v === 'real' ? 'var(--accent)' : v === 'invisible' ? 'var(--warning)' : 'var(--muted)';
+---
+<figure class="chart pshift">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="The top profiler cost at four stages of the hunt, side by side. Baseline: market-data broadcast fan-out, 35% of CPU, a data-volume problem, real. After batching trades: async-runtime tax, 92% of the one pegged core, a runtime-overhead problem, real. After taking the consumer off the runtime: a thread asleep on fsync, off-CPU and invisible to the profiler, an I/O-coupling problem. After decoupling the journal: clone and allocation under a lock, 20% of CPU, but removing it moved the knee by zero — not the actual constraint. The top cost is a different kind of problem in every panel.">
+    {panels.map((p, i) => {
+      const cx = i * colW + colW / 2;
+      const bw = 46;
+      const barH = p.pct === 0 ? 6 : (Math.min(p.pct, 100) / 100) * plotH * (barMax / 100) + 8;
+      const y = base - barH;
+      return (
+        <g>
+          {i > 0 && <line x1={i * colW} y1={top - 12} x2={i * colW} y2={base + 8} stroke="var(--border)" stroke-dasharray="2 3" opacity="0.5" />}
+          <text x={cx} y={top - 16} text-anchor="middle" class="stage">{p.stage}</text>
+          {p.pct === 0
+            ? <rect x={cx - bw / 2} y={base - 6} width={bw} height={6} rx="2" fill={kindColor(p.verdict)} opacity="0.4" stroke={kindColor(p.verdict)} stroke-dasharray="3 2" />
+            : <rect x={cx - bw / 2} y={y} width={bw} height={barH} rx="2" fill={kindColor(p.verdict)} />}
+          <text x={cx} y={(p.pct === 0 ? base - 6 : y) - 6} text-anchor="middle" class="pct">{p.pct === 0 ? 'off-CPU' : p.pct + '%'}</text>
+          <text x={cx} y={base + 22} text-anchor="middle" class="topname">{p.top}</text>
+          <text x={cx} y={base + 37} text-anchor="middle" class="kind">{p.kind}</text>
+          {p.verdict !== 'real' && <text x={cx} y={base + 53} text-anchor="middle" class={p.verdict === 'invisible' ? 'flag inv' : 'flag'}>{p.verdict === 'invisible' ? '⚠ profiler blind' : '✗ not the cap'}</text>}
+        </g>
+      );
+    })}
+  </svg>
+  <figcaption>The single top cost in the profile at each stage, side by side. It is a different <em>kind</em> of problem every time — data volume, then runtime overhead, then a thread asleep on disk that the CPU profiler can't see at all, then allocation under a lock. And twice (amber and grey flags) the top cost was not what actually capped throughput. Reading a profile top-down would have sent me the wrong way at three of these four stages.</figcaption>
+</figure>
+
+<style>
+  .pshift :global(.stage) { font-size: 12px; fill: var(--fg); font-family: var(--font-sans); font-weight: 600; }
+  .pshift :global(.pct) { font-size: 12px; fill: var(--fg); font-family: var(--font-mono); font-weight: 600; }
+  .pshift :global(.topname) { font-size: 11.5px; fill: var(--fg); font-family: var(--font-sans); }
+  .pshift :global(.kind) { font-size: 10.5px; fill: var(--muted); font-family: var(--font-sans); font-style: italic; }
+  .pshift :global(.flag) { font-size: 10px; fill: var(--muted); font-family: var(--font-mono); }
+  .pshift :global(.flag.inv) { fill: var(--warning); }
+</style>

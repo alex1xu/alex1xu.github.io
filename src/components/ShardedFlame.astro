@@ -1,0 +1,138 @@
+---
+// Focused, interactive flamegraph of the server at the ~97k knee (110k offered), after
+// sharding the delivery path across 4 cores. The story it tells is the inverse of the
+// ~54k profile: there is no longer a single pegged consumer. Routing is spread evenly
+// across four projection-shard threads (balanced within 3%), the socket writes across the
+// tokio workers, and the engine still just busy-spins. Widths are period-weighted self-time
+// from the real perf capture (folded-opt4-110k-v2.txt), grouped by thread then by symbol;
+// the raw inferno SVG is linked below. Per-thread split from the capture: tokio workers
+// 44.2%, projection shards 39.8%, engine 16.0%.
+const tree = {
+  name: 'server @ 97k knee — sharded', kind: 'root', self: 0, note: 'whole process, period-weighted CPU self-time',
+  children: [
+    { name: 'tokio workers ×8 — socket writes', kind: 'work', self: 0,
+      note: '44.2% of the process, spread across the runtime pool — the per-connection encode + write path, no longer starved behind one consumer',
+      children: [
+        { name: 'async runtime + I/O', kind: 'work', self: 27.6,
+          note: 'poll/epoll/wake + serde encode + broadcast recv + dedup + tcp send, spread thin across the 8 workers — no single pegged thread anymore' },
+        { name: 'memset + memmove', kind: 'wall', self: 16.6,
+          note: 'copying encoded frames out to 250 connections (__memset_avx512 + __memmove_avx512 + rep_movs, ~11.5% of all samples). The top real cost now — and it scales with message COUNT, not frame size.' },
+      ] },
+    { name: 'projection — 4 sharded threads', kind: 'work', self: 0,
+      note: '39.8% of the process, split evenly across 4 shards (14.1 / 14.0 / 13.8 / 13.7 ×10⁹ ns — balanced within 3%). This is where the single pegged consumer used to be.',
+      children: [
+        { name: 'shard 0', kind: 'work', self: 9.9, note: 'owns users % 4 == 0: drain cursor → route ~62 clients → stamp reliable lane' },
+        { name: 'shard 1', kind: 'work', self: 9.9, note: 'owns users % 4 == 1 (~62 clients)' },
+        { name: 'shard 2', kind: 'work', self: 10.0, note: 'owns users % 4 == 2 (~62 clients)' },
+        { name: 'shard 3', kind: 'work', self: 10.0, note: 'owns users % 4 == 3 (~62 clients)' },
+      ] },
+    { name: 'engine — spinning', kind: 'spin', self: 16.0,
+      note: 'still pegs a core but SPINNING on a full outbound ring, not matching (an order clears in microseconds). CPU% here is not saturation.',
+      children: [
+        { name: 'match', kind: 'work', self: 0.5, note: 'OrderBook::apply + RiskEngine — microseconds per order' },
+      ] },
+  ],
+};
+const flameSrc = '/flamegraphs/sharded-97k.svg';
+---
+<figure class="chart flame">
+  <div class="fl-head">
+    <span class="fl-title">Where the time goes at the ~97k knee — after sharding delivery</span>
+    <span class="fl-hint">click a frame to zoom · click the top bar to reset</span>
+  </div>
+  <div class="fl-canvas" data-tree={JSON.stringify(tree)}></div>
+  <div class="fl-tip" hidden></div>
+  <figcaption>
+    Focused flamegraph of the server at the ~97k knee, period-weighted CPU self-time (grouped by thread,
+    then symbol; from the real capture). Compare it to the ~54k profile in <a href="/blog/mario-markets-2#the-pegged-thread-was-mostly-overhead">the null-result section</a>: there is no
+    single pegged consumer anymore. The routing that one thread used to do serially now runs on four
+    projection shards, balanced within 3% of each other; the socket writes spread across the eight tokio
+    workers; and the engine still just busy-spins a core it isn't using. The largest real cost is now
+    memory movement in the socket-write path (<code>memset</code> + <code>memmove</code>, ~11%) — which is
+    bounded by how many frames go out, not how big each one is. <a href={flameSrc} target="_blank" rel="noopener">Open the full raw inferno profile ↗</a>
+  </figcaption>
+</figure>
+
+<script>
+  type Node = { name: string; kind: string; self: number; note?: string; children?: Node[] };
+  const total = (n: Node): number => n.self + (n.children?.reduce((s, c) => s + total(c), 0) ?? 0);
+
+  document.querySelectorAll<HTMLElement>('.flame').forEach((root) => {
+    const canvas = root.querySelector<HTMLElement>('.fl-canvas');
+    const tip = root.querySelector<HTMLElement>('.fl-tip');
+    if (!canvas || !tip || !canvas.dataset.tree) return;
+    const data: Node = JSON.parse(canvas.dataset.tree);
+    const ROW = 40, GAP = 2, PAD = 3;
+
+    function render(focus: Node) {
+      canvas!.innerHTML = '';
+      const grand = Math.max(total(focus), 0.001);
+      const rows: HTMLElement[] = [];
+      function place(n: Node, depth: number, x: number, w: number) {
+        while (rows.length <= depth) {
+          const r = document.createElement('div');
+          r.className = 'fl-row';
+          r.style.height = ROW + 'px';
+          canvas!.appendChild(r); rows.push(r);
+        }
+        const el = document.createElement('button');
+        el.className = 'fl-frame fl-' + n.kind;
+        el.style.left = x + '%';
+        el.style.width = 'calc(' + w + '% - ' + GAP + 'px)';
+        const pct = ((total(n) / grand) * 100);
+        el.textContent = n.name;
+        el.addEventListener('mouseenter', () => {
+          tip!.hidden = false;
+          tip!.innerHTML = '<strong>' + n.name + '</strong> · ' + n.self.toFixed(1) + '% self · '
+            + pct.toFixed(1) + '% of view' + (n.note ? '<br>' + n.note : '');
+        });
+        el.addEventListener('mousemove', (e) => {
+          const r = root.getBoundingClientRect();
+          tip!.style.left = Math.min(e.clientX - r.left + 12, r.width - 260) + 'px';
+          tip!.style.top = (e.clientY - r.top + 14) + 'px';
+        });
+        el.addEventListener('mouseleave', () => { tip!.hidden = true; });
+        el.addEventListener('click', () => render(n === focus ? data : n));
+        rows[depth].appendChild(el);
+        let cx = x;
+        const kids = (n.children ?? []).slice().sort((a, b) => total(b) - total(a));
+        for (const c of kids) {
+          const cw = (total(c) / grand) * 100;
+          place(c, depth + 1, cx, cw);
+          cx += cw;
+        }
+      }
+      place(focus, 0, 0, 100);
+      canvas!.style.height = (rows.length * (ROW + PAD)) + 'px';
+    }
+    render(data);
+  });
+</script>
+
+<style>
+  .flame { margin: 1.75rem 0; position: relative; }
+  .flame .fl-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .flame .fl-title { font-size: 14px; font-weight: 600; color: var(--fg); font-family: var(--font-sans); }
+  .flame .fl-hint { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+  .flame .fl-canvas { position: relative; width: 100%; }
+  .flame .fl-row { position: relative; width: 100%; }
+  .flame .fl-frame {
+    position: absolute; height: calc(100% - 2px); box-sizing: border-box;
+    border: 1px solid var(--bg); border-radius: 2px; cursor: pointer;
+    font-size: 11px; font-family: var(--font-mono); color: var(--fg);
+    padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.9;
+  }
+  .flame .fl-root, .flame .fl-spin { background: var(--bg-soft); }
+  .flame .fl-work { background: var(--accent-soft); }
+  .flame .fl-wall { background: var(--accent); color: #fff; }
+  .flame .fl-lock { background: var(--warning); color: #fff; }
+  .flame .fl-idle { background: var(--border); color: var(--muted); }
+  .flame .fl-frame:hover { filter: brightness(1.06); outline: 1px solid var(--fg); }
+  .flame .fl-tip {
+    position: absolute; z-index: 5; max-width: 260px; pointer-events: none;
+    background: var(--fg); color: var(--bg); font-size: 11.5px; font-family: var(--font-sans);
+    padding: 0.4rem 0.55rem; border-radius: 5px; line-height: 1.35;
+  }
+  .flame .fl-tip :global(strong) { font-family: var(--font-mono); }
+</style>

@@ -1,0 +1,29 @@
+---
+// Embed a real inferno flamegraph, live and interactive (hover for the frame, click to
+// zoom, the SVG's own search box works). These are the actual perf captures from the
+// server box, not redrawn. Props pick which capture and what to say about it.
+interface Props {
+  src: string;
+  caption: string;
+  height?: number;
+}
+const { src, caption, height = 460 } = Astro.props;
+---
+<figure class="chart flame">
+  <div class="flame-frame" style={`height:${height}px`}>
+    <iframe src={src} loading="lazy" title={caption}></iframe>
+  </div>
+  <figcaption>{caption} <a href={src} target="_blank" rel="noopener">Open full-screen ↗</a> (hover a frame for its symbol and percentage; click to zoom in).</figcaption>
+</figure>
+
+<style>
+  .flame .flame-frame {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: auto;
+    background: #fff;
+    resize: vertical;
+  }
+  .flame .flame-frame :global(iframe) { width: 100%; height: 100%; display: block; border: 0; }
+  .flame figcaption a { font-family: var(--font-mono); font-size: 0.82rem; color: var(--accent); }
+</style>
