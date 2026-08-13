@@ -4,7 +4,8 @@
 // The journal tees off ingress downward (a pre-engine branch that never gates the engine);
 // market-data is a separate 20Hz consumer of the SPMC broadcast.
 // Vertical order is chosen so the delivery path (engine→projection→egress→clients) and the
-// journal tee never overlap.
+// journal tee never overlap. The journal is asynchronous: the diagram shows the final
+// design, after removing an earlier fsync-before-admission bug described in part two.
 const W = 640, H = 320;
 const colClients = 58;
 const colTasks = 214;
@@ -81,7 +82,7 @@ const mdY = 88, projY = 148;
     <rect x={colTasks - bw / 2} y={egressY} width={bw} height={rowH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
     <text x={colTasks} y={egressY + rowH / 2 + 4} text-anchor="middle" class="btask">egress</text>
   </svg>
-  <figcaption>The pipeline, left to right: clients submit through the gateway and ingress, ingress sequences and hands off over an SPSC ring to the single engine thread, and the engine broadcasts over an SPMC ring to the projection and a 20Hz market-data feed. The projection routes back through egress to the clients. The journal tees off ingress before the engine, so a command is recorded before it can match, on a branch that never blocks the hot path.</figcaption>
+  <figcaption>Clients submit through the gateway and ingress. Ingress sequences commands, sends them over an SPSC ring to the single engine thread, and tees them independently to the journal. The engine broadcasts over an SPMC ring to projection and a 20 Hz market-data feed; projection routes client-specific events back through egress. The journal is off the matching path, so a slow disk cannot delay order admission.</figcaption>
 </figure>
 
 <style>
