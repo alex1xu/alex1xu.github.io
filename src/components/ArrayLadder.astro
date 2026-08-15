@@ -1,6 +1,6 @@
 ---
-// The price ladder as a bounded array (1–99¢). Each cent is an index into an array of FIFO
-// queues of resting orders. The best-price cursor (terracotta) does a bounded backward scan.
+// Bid-side price ladder as a bounded array (1–99¢). Each cent is an index into an array of FIFO
+// queues of resting orders. The best-bid cursor does a bounded backward scan.
 // Show a representative window of the 99 slots with a few populated.
 const slots = [
   { cent: 1, orders: 0 },
@@ -12,7 +12,7 @@ const slots = [
   { cent: 7, orders: 0 },
   { cent: 8, orders: 0 },
 ];
-const best = 5; // best price = highest populated cent in this window
+const best = 5; // highest populated bid in this window
 const W = 640, colW = 74, x0 = 40, top = 58, cellH = 22, gap = 4, maxQ = 3;
 const H = top + maxQ * (cellH + gap) + 74;
 const cx = (i) => x0 + i * colW;
@@ -20,13 +20,13 @@ const slotW = colW - 12;
 const bestIdx = slots.findIndex((s) => s.cent === best);
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="The price ladder as an array: each cent from 1 to 99 is an array index holding a FIFO queue of resting orders. Access to any level is O(1) by index; the best-price cursor sits at the highest populated cent and scans backward a bounded number of slots. Shown: cents 1 through 8, with orders resting at 3¢, 4¢, and 5¢, best price at 5¢.">
-    <text x={x0 - 8} y={top - 24} text-anchor="start" class="axttl">price[cent] → FIFO queue of resting orders</text>
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Bid-side price ladder as an array. Each cent from 1 to 99 indexes a FIFO queue of resting buy orders. Access to a level is constant time. The best bid is the highest populated price; if it empties, the cursor scans backward through at most 99 slots. Shown: bids at 3, 4, and 5 cents.">
+    <text x={x0 - 8} y={top - 24} text-anchor="start" class="axttl">bid_price[cent] → FIFO queue of resting orders</text>
 
     {/* best-price cursor */}
     <g>
       <line x1={cx(bestIdx) + slotW / 2} y1={top - 16} x2={cx(bestIdx) + slotW / 2} y2={top - 4} stroke="var(--accent)" stroke-width="1.5" />
-      <text x={cx(bestIdx) + slotW / 2} y={top - 20} text-anchor="middle" class="cursor">best ↓</text>
+      <text x={cx(bestIdx) + slotW / 2} y={top - 20} text-anchor="middle" class="cursor">best bid ↓</text>
     </g>
     {/* bounded backward scan arrow: from a higher empty slot down toward best */}
     <line x1={cx(bestIdx + 2) + slotW / 2} y1={top - 10} x2={cx(bestIdx) + slotW / 2 + 6} y2={top - 10} stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#al-arr)" />
@@ -61,7 +61,7 @@ const bestIdx = slots.findIndex((s) => s.cent === best);
 
     <text x={x0 - 8} y={top + maxQ * (cellH + gap) + 42} text-anchor="start" class="axttl dim">O(1) index access · … slots continue to 99¢</text>
   </svg>
-  <figcaption>Bounded 1–99¢ price space → a level is just an array index; no comparison tree needed. The best-price cursor moves by a short bounded backward scan, not a log-time lookup.</figcaption>
+  <figcaption>For bids, a bounded 1–99¢ price range makes each price level an array index. The highest populated level is the best bid. When it empties, the cursor scans backward through the small fixed range. The ask side is the mirror image.</figcaption>
 </figure>
 
 <style>

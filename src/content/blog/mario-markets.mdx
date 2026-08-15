@@ -1,196 +1,95 @@
 ---
-title: "Mario Markets: rebuilding a trading exchange for speed and correctness"
+title: "Mario Markets: a single-writer exchange engine"
 date: "2026-07-03"
-description: "We ran a Mario Kart prediction market for 150 traders at a Berkeley competition. The Python exchange lagged under load, so I rebuilt it in Rust. The biggest speedup did not come from the order-book data structure; it came from keeping allocation off the matching path."
-tags: ["rust", "systems", "trading", "orderbook", "performance", "lock-free"]
+description: "A Rust exchange for a live Mario Kart prediction market: the matching engine, its correctness model, and the data-layout decisions that mattered."
+tags: ["rust", "systems", "trading", "orderbook", "performance"]
 ---
 
-import Callout from '../../components/Callout.astro';
 import SeriesNav from '../../components/SeriesNav.astro';
-import OldTopology from '../../components/OldTopology.astro';
-import ArrayLadder from '../../components/ArrayLadder.astro';
-import TwoFrontWall from '../../components/TwoFrontWall.astro';
 import NewTopology from '../../components/NewTopology.astro';
 import DifferentialHarness from '../../components/DifferentialHarness.astro';
-import AblationBars from '../../components/AblationBars.astro';
-import HotPath from '../../components/HotPath.astro';
-import EgressProfile from '../../components/EgressProfile.astro';
+import ArrayLadder from '../../components/ArrayLadder.astro';
 
-<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Finding the delivery bottleneck" />
 
-This spring, about 150 college students from across the country spent a weekend at UC Berkeley playing quantitative games at a competition run by Traders at Berkeley, a club I've been part of since my third semester here. I was head of game development this year, and I led the development of a new game called Mario Markets. Competitors traded binary contracts from their laptops on prerecorded Mario Kart races, betting on which of four tracked racers would finish best, with the race playing on a projector at the front of the room. A few of us in the club built the exchange behind it over the months leading up to the event.
+Mario Markets was a live prediction-market game for a Berkeley trading competition. About 150 players traded from their laptops while prerecorded Mario Kart races played on a projector. Each race had four tracked racers, so there were four related markets. The exchange was sized for roughly 250 connected players.
 
-I sized it for the event, estimating roughly 150 people trading at maybe ten orders a second each at peak. Under that load (traders sent well under 1,000 orders a second in total during the competition) it worked, but not well. At the loudest moments of a race the latency got bad for some players. They'd fire an order and wait seconds to see it land. So over the following months I built a second version with three goals:
+This post covers the Rust rewrite: what the engine owns, why it has one writer, how it is tested, and the data-structure choices on the matching path. The next post covers the separate problem of delivering its output to hundreds of clients.
 
-1. **Low latency** at that load, with enough headroom for future modes such as automated strategies.
-2. A **fair, rigorously tested engine** with a clear durability model.
-3. **An extensible design**: a new game should change game rules, not the engine architecture.
+## The market
 
-<Callout type="lesson" title="TL;DR">
-The Python exchange (version one) that ran the competition saturated below **300 accepted orders a second**. Past that, submit-to-fill latency was primarily queueing delay, where orders piled up and p99 climbed into the tens of seconds. The Rust rewrite (version 2) handles about **18,000** orders a second at an engine-side p99 of **33 microseconds**, and matches a command in **~2 µs** in isolation. Roughly a 60–70× gap (though I hold this number loosely as they ran on different, but comparable, hardware).
+Each market asks whether one racer will finish best of the four. A YES contract pays 100 cents if that racer wins and 0 otherwise. Traders buy or sell YES at integer prices from 1 to 99 cents. Buying YES at 40 cents therefore risks 40 cents for a possible 100-cent payout.
 
-Four things I didn't expect:
+Each market uses a continuous limit order book. A limit order may wait in the book at its stated price; a market order takes available liquidity immediately. When a new order can trade with a resting order, the best price trades first. At the same price, the earlier resting order trades first. The engine also tracks positions, collateral, cancellations, settlement, and the round leaderboard.
 
-- **The speedup came from the design, not the language.** I measured each v2 optimization against its alternative on an identical replay. The dominant one was **not allocating while matching** — ×5.3 throughput and ×64 tail latency. Using an array-shaped order book was worth **×1.12**. Batching the durability writes was worth **×63.5** on disk.
-- **Speed and correctness were the same decision.** The single writer that made matching fast is what made it race-free and deterministic, and determinism is what let me test against an independent reference book.
-- **The engine was not the bottleneck.** When version 2 saturated, it idled while a single-threaded egress path that delivered fills back to 250 clients set the ceiling. I found this by taking the engine off the wire to measure it alone.
-- **My own tools lied to me twice.** The faulty version one load tester shared a core with its result-draining, making it measure itself instead of the server. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. 
+## Why rewrite the first version
 
-Three lessons shaped the rewrite: benchmark each optimization in isolation; treat the measurement rig as part of the system; and design for testability before optimizing.
-</Callout>
+The event ran on a Python implementation. It was sufficient for the competition's actual load, but it saturated below 300 accepted orders per second in testing, with queued orders driving submit-to-fill p99 into tens of seconds. More importantly, state was split among async actors, Redis, caches, and Postgres. That made it difficult to answer a basic question: after an order, which component was authoritative for the book, position, and wallet?
 
-## How Mario Markets is played
+The rewrite was not an attempt to make every part of the service low level. It was an attempt to put the economic state behind one owner and make its transitions reproducible.
 
-The instrument is a binary prediction market. Each race tracks four racers, and each racer has a market asking, “Will this racer finish best of the four?” Traders buy or sell YES contracts at integer prices from 1 to 99 cents. At settlement, a YES contract pays 100 cents if that racer wins and 0 otherwise. So if you buy YES at 40 cents and the racer wins, you receive 100 cents; if the racer loses, you receive nothing. Exactly one of the four markets settles at 100, so information that moves one racer's price also changes the other three.
+## One engine owns the round
 
-Each market uses a continuous limit order book with price-time priority. A limit order can rest in the book; a market order takes available liquidity immediately; orders can fill partially or be cancelled. The engine decides who trades, at what price, and in what order. Above the books sit wallets, per-market P&L, and a cumulative leaderboard.
-
-Picture 150 laptops firing at all four books the instant a blue shell knocks the leader out of first. That one event moves every racer's odds of finishing best, so every market reprices at once. A few hundred milliseconds of lag is the difference between a fill and a miss. The exchange doesn't get to be slow, and it definitely doesn't get to be wrong about how many contracts you hold or how much cash is in your wallet.
-
-## Version one
-
-I built v1 on a deadline, with a React frontend, a FastAPI backend, a standalone Python asyncio matching engine, Redis doing double duty as the command bus and the live fanout, and Postgres as the source of truth.
-
-I built it CQRS, separating the write path (submit an order) from the read path (query your book and P&L). Order entry has to be low-latency and strictly ordered, while queries are high-volume and can tolerate a little staleness, so splitting them lets each scale independently.
-
-<OldTopology />
-
-`POST /orders` returned immediately without matching, dropping the command onto a Redis stream. The engine consumed the stream, matched in memory, persisted to Postgres, and published fills over pub/sub, and the browser refetched when a WebSocket message told it to. There's a subtle bug here that I didn't surface until later, which is that your view of your own P&L is always a refetch behind (you don't see the order you placed until the next update).
-
-### How v1 grew
-
-I didn't design v1 and then build it in one shot, it grew around the matching engine. Each layer I added around the matching core, believing it would make things faster or more scalable, also added a seam where two components now had to agree about state. In order:
-
-- **The order book.** It started as a `SortedDict`, a balanced tree keyed by price. I later replaced it (more in v2).
-- **The two-plane split.** One FastAPI process couldn't own both order entry and the WebSocket fanout under load, because they contend for the same event loop, so I split it into a control plane and a separate gateway.
-- **In-memory rounds.** I made the engine match purely in memory during a round and bulk-persist only at settlement. Skipping the per-order database write was the single biggest speedup in v1. It meant a crash loses the round, since the durable copy only exists at the end, but for a live event where the fallback is re-running the race, each only a few minutes, that was acceptable.
-- **Sharded fanout.** To keep 150-plus WebSocket clients fed, I sharded the fanout across worker coroutines with serialized access to the shared state.
-
-### Where it broke down
-
-The visible problem was speed, so before the event I load-tested v1. The load tester was the first thing that broke, and it broke in a way that hid the real problem. I aimed for 1,500 aggregate orders a second — 150 users at ~10/s each, the load I'd designed for — and got two failures stacked on top of each other, one masking the other.
-
-The first was my own load generator. I'd written it as a single Python process on one asyncio event loop, opening 200-plus WebSocket connections, firing HTTP order submissions, and draining the inbound flood of book updates and trade notifications, all on one core. It was also closed-loop. Each simulated user awaited its own HTTP response before sending the next order, so when the server slowed down, my client's send rate collapsed with it and throttled itself to 10–20% of target. It was measuring its own ceiling, not the exchange's.
-
-The second was underneath it. The server was also saturating. At the sub-300 orders a second my client could deliver, one asyncio actor per market (four in all) topped out around **150–286 accepted orders a second**, with a submit-to-fill p99 between **28 and 78 seconds** and a backlog that climbed as high as **17,002** queued commands.
-
-<TwoFrontWall />
-
-The client could offer ~150–300/s and the server saturated at ~286/s, so the two ceilings sat on top of each other and I couldn't separate them. Bandwidth wasn't the issue (WebSocket traffic peaked around 3.7 MB/s). To measure the server on its own, the generator has to be independent of it — open-loop, and on separate machines — so the thing I'm measuring can't throttle my measurement.
-
-Speed was the front I could see. Underneath it was a quieter problem. v1 gave me almost no way to know it hadn't corrupted itself, and both the load-testing gap and the correctness gap came from the same place, reasonable tradeoffs taken on a deadline that each left a seam.
-
-- During a round, v1 matched in memory and persisted only at settlement, so a crash lost the round, and settlement then read state from two different places that could disagree.
-- The Redis control bus carried schema-less, unacknowledged messages, so a malformed or dropped command failed silently instead of being rejected at the boundary.
-- A per-endpoint flag let some reads answer from cache and some from Postgres, which could diverge.
-- The sharded fanout shared a sequence-tracking map that needed careful locking to stay ordered.
-
-Every one of these was a boundary where two components had to agree and sometimes didn't. So the pattern I took into v2 was to stop adding those boundaries: one source of truth instead of a cache and a database that can diverge, one typed transport instead of a bus with no schema, and bounded queues with backpressure instead of an unbounded backlog that hides saturation.
-
-## Version two
-
-Every v1 correctness bug traced back to two components disagreeing about shared state. The cleanest way to remove that class of bug is not to share matching state at all. In v2, one engine thread owns the entire round: every order book, position, wallet, and collateral reservation. It performs every state change and takes no lock because no other thread can touch that state while it matches.
-
-A single writer caps matching throughput at one core. In this product, one core could still match hundreds of thousands of commands per second, far above the required load. In return, the design removes lock contention and data races from matching. It also makes the engine deterministic: the same sequenced command stream produces the same events and logical state every time.
-
-Determinism makes the system testable because a test can replay an input stream and assert an exact result. In v1, relative ordering depended on which worker happened to see a message first. In v2, ingress assigns every accepted command a global sequence number and arrival timestamp. The engine reads those recorded values rather than consulting the wall clock, so they fully determine its behavior.
+The Rust engine runs on one dedicated OS thread. It is the only code allowed to mutate the active round: every order book, position, wallet, collateral reservation, and settlement state.
 
 <NewTopology />
 
-Commands reach the engine through a lock-free single-producer/single-consumer ring. Engine events leave through a multicast ring with one producer and multiple consumers. This is the shape popularized by the LMAX Disruptor: a single writer, preallocated rings, and sequence-numbered events. The engine busy-spins on its inbound ring because blocking and waking an OS thread costs microseconds—the same scale as matching itself.
+Network I/O runs in Tokio, the standard Rust async runtime. Tokio tasks accept WebSocket traffic, manage connections, and pass commands to ingress. The engine is not a Tokio task. Matching is CPU-bound and latency-sensitive; it should not be scheduled alongside network tasks that repeatedly wait for sockets.
 
-I wanted to avoid a per-order database write without returning to v1's all-in-memory round state. Ingress therefore tees each sequenced command to two independent destinations: the engine ring and the journal writer. The journal batches `fsync` calls, typically one flush per 64 commands. That keeps disk I/O off the matching path, but it deliberately creates a bounded durability window: a hard crash can lose recently acknowledged, unflushed commands. For a short live event whose fallback was restarting the round, that was acceptable. Because the journal records the engine's full input stream, it can reconstruct a round by replay.
+Ingress assigns each accepted command a global sequence number and an arrival timestamp. It sends the resulting `SequencedCommand` to the engine over a bounded single-producer/single-consumer ring. The engine consumes commands in that order and produces events into an outbound multicast ring.
 
-The game-specific logic lives behind four narrow traits, so next year's game can be four trait implementations and nothing else touched.
+This creates a useful boundary:
 
-### Testing
+- The network side owns connections and I/O.
+- The engine side owns the exchange state.
+- The rings transfer messages between those owners without giving either side direct access to the other's state.
 
-The fast book uses an intrusive list in an object pool, cached best-price cursors, and O(1) relinking. That is efficient, but it creates many ways to be almost correct. So I wrote `RefBook`, a second implementation designed for obvious correctness rather than speed. It keeps resting orders in a flat list and rescans the list whenever it needs the best eligible order.
+The inbound ring has exactly one producer, ingress, and one consumer, the engine. The outbound ring has one producer, the engine, and several consumers. Projection delivers reliable acknowledgements, fills, and cancels to the relevant client. Market data is separate and publishes current snapshots at 20 Hz; an old snapshot can be discarded because the next one replaces it.
+
+### Why one writer
+
+One writer means there is no lock around matching and no race between two threads changing the same book. It also makes the engine deterministic. Given the same ordered `SequencedCommand` stream—including command data, sequence numbers, and ingress timestamps—the engine produces the same events and logical state.
+
+A single engine shard uses one core. The bare engine sustained about 630,000–690,000 commands per second in process, far above the load the event required. Several engine shards would require a partitioning rule and cross-market risk accounting.
+
+### Journal and recovery
+
+Ingress also tees each sequenced command to a journal writer. The journal records the engine's input stream, not a derived snapshot or output event. Replaying that stream reconstructs the round.
+
+The journal is off the matching path. It group-commits disk writes rather than flushing every command. That gives a bounded durability window: a hard crash can lose recently acknowledged commands that have not yet been flushed. For a short live event where the fallback was restarting a round, that was acceptable. A slow disk could not delay trading; an admission-path bug that violated that rule is covered in part two.
+
+## Matching and risk
+
+For a new order, the engine validates the request, checks the user's risk limit, reserves worst-case collateral, and then matches against the best eligible resting orders. A buy takes the lowest available sells at or below its limit; a sell takes the highest available buys at or above its limit. A fill executes at the resting order's price. Any remaining good-till-cancel limit quantity joins the book; market and immediate-or-cancel remainders are released.
+
+Collateral is the maximum amount a player could lose if the order fills. Buying `N` YES contracts at `p` cents reserves `N × p`; selling them reserves `N × (100 - p)`. The risk engine sits above all books so it can enforce a player's round-wide budget as well as a per-market position cap.
+
+## Testing the fast book against a simple one
+
+The production book uses cached best prices, compact order handles, and constant-time list updates. Those optimizations make it easy to introduce a bug that is almost invisible in hand-written examples. Instead of relying on more examples, I wrote a second book with a simple implementation.
 
 <DifferentialHarness />
 
-The test feeds both books the same randomly generated command stream and, after every command, checks that they emitted the same events and hold the same resting orders. The generator draws from a tiny space of four users and a handful of order IDs, which makes crossing trades and self-trade prevention fire constantly instead of almost never, heavy on cancels, across every order type. Each step also checks invariants directly on the fast book (e.g. positions net to zero per market, reserved collateral never goes negative, the book is never crossed at rest) so a bug that keeps both event streams equal but corrupts an invariant still gets caught. Determinism makes the replay path testable the same way. The engine is a pure function of its sequenced input, and the journal records exactly that input, so replaying the log has to reproduce the round exactly.
+`RefBook` keeps resting orders in a flat vector and rescans it to find the next order to match. It is slow, but its behavior is easy to inspect. Tests feed both books the same randomized command stream and, after every command, compare emitted events and logical resting orders. They also check independent invariants on the production book: positions sum to zero within a market, collateral never goes negative, and a resting book is never crossed.
 
-The ring has concurrent code, so I model-check it with `loom`, which explores the ring's thread interleavings and asserts the consumer sees each item, in order, with nothing lost. 
+The same determinism supports replay tests: journal a generated command stream, read it back, and check that a fresh engine produces the same events and snapshot after each command. The rings are the concurrent part of the system, so their ordering protocol is checked separately with Loom, which explores small producer/consumer thread schedules exhaustively.
 
-## Optimizations
+## Data layout on the matching path
 
-With the harness in place, the performance work was safe to do. Throughout development, I measured each proposed optimization against the alternative it replaced on an identical replay stream.
-
-### The order book: a flat array over a tree
-
-A `SortedDict` was my original order-book structure. But prices in this exchange are always an integer from 1 to 99 cents. That makes a price level an array index: `index = price - low`. A 99-slot array gives O(1) access to a level; when the best level empties, finding the next one is only a short bounded scan. No tree traversal is needed.
+The exchange used a fixed 1–99-cent price range. That mattered more than the nominal choice between a tree and an array.
 
 <ArrayLadder />
 
-I benchmarked the flat array against the `BTreeMap` it replaced. The array improved sustained throughput by **×1.12**, while p99 latency was unchanged. That was worth keeping, but smaller than the big-O comparison suggests. With only 99 possible price levels, the tree is tiny and its theoretical disadvantage barely has room to show up.
+A generic `BTreeMap` maps a price to a price level with a comparison-tree lookup. Here, a price is already a bounded integer, so the array ladder uses `index = price - low`. Each slot stores the head and tail of a FIFO queue for that price. Accessing a level is constant time; when the best level empties, finding the next one is a scan over at most 99 slots.
 
-### No allocation while matching
+The array improved sustained throughput by about 1.12× over the `BTreeMap` comparison, with no material p99 change. That result was useful because it kept the claim proportional: the price range is so small that the tree has little work to do.
 
-I suspected allocation on insertion was a major source of tail latency, even though I did not isolate it in a profile first. So every resting order lives in a pre-sized object pool. Inserting an order takes a reusable slot from the pool; a fill or cancel returns the slot. Matching relinks those slots through an intrusive list instead of asking the general allocator for memory.
+The larger effect came from order allocation. Resting orders live in a pre-sized arena. An insert takes a free slot; a complete fill or cancellation returns it. The queue links use compact arena indices rather than separately allocated list nodes. Against heap-allocated order nodes in the tree implementation, this raised throughput by about 5.3× and reduced p99 from 131 µs to 2 µs. The point was not that Rust normally requires manual allocation—it does not—but that allocation variability did not belong in the matching path.
 
-Against the same book with heap-allocated order nodes, the pooled arena delivered **×5.3 throughput** and **×64 lower p99 latency**, from 131 µs to 2 µs. A pool's normal path is a bounded free-list pop or push, rather than an allocator path with variable-cost slow cases. This ablation used the `BTreeMap` book, so the ×5.3 figure isolates allocation in that tree-based implementation; the exact multiple would differ for the flat array.
+## Where the first end-to-end ceiling was
 
-<HotPath />
+At 20,000 offered orders per second with 250 clients, the service acknowledged about 18,000 orders per second with engine-side p99 of 33 µs. The bare engine was clearly not the limit. The output side was: one routing task had to distribute events across hundreds of client lanes.
 
-### Group-commit for the journal
+Part two follows that bottleneck from roughly 20,000 to 97,000 end-to-end orders per second. The important distinction is that the matching engine was already fast; the remaining work was identifying where the rest of the system was serial, blocked, or measuring itself instead of the service.
 
-Durability off the hot path is only cheap if the `fsync` is amortized. On a real xfs disk, a `fsync` per command runs at 508 commands a second, since each one is a couple-millisecond trip to the disk. Batching 64 commands per flush runs at 32,299 a second, a **×63.5** difference.
-
-<AblationBars />
-
-### Where the real ceiling is
-
-At 20,000 orders a second offered to 250 clients, the engine acks about 18,000 at an in-system p50 of 2 µs and p99 of 33 µs, with nothing lost on a client's reliable lane. The load generator counts an ack only when the frame arrives back over the socket, so that ~18k is a full round-trip rate. The ~10% gap between offered and acked isn't loss, it's cancels chasing orders that already filled and correctly rejecting. I measure on the engine's own clock, ingress stamp to emit stamp, so it's immune to skew between machines and isn't the round trip to a browser. And the load generator is open-loop, firing on a fixed schedule regardless of when replies come back, which is the fix for exactly the trap that fooled me in v1.
-
-I wanted to find where the bottleneck actually sat (without a profiler), so I took the engine off the wire and ran the matching loop in-process, pinned to one core with no network and no journal. In isolation the bare matching loop sustains **630,000–690,000 commands a second** (the durable engine is capped lower, at the ~32k/s the journal flushes). Either ceiling is far above the 20k the wire run topped out at, so the engine was never what gave out. It was idling while something downstream throttled it.
-
-Turns out it was on the output side. The engine publishes each event into an outbound ring, and a projection task drains it and routes each event to its client's lane. A fill or an ack goes to the one trader it belongs to, and round-state changes broadcast to everyone. Each reliable lane is capped, and when a client can't keep up its lane fills. Rather than drop that one message, the projection evicts the whole client, so it stops receiving live updates until it reconnects. I'd assumed the engine would eventually spin on a full outbound ring, but it never does. Across the whole ladder, `outbound_full` stayed at zero while evictions hit 250. The projection drains the ring faster than the engine fills it, so the backup is entirely downstream, at the per-client lanes.
-
-| offered/s | achieved/s | in-sys p99 | evictions |
-|---:|---:|---:|---:|
-| 2,000 | 1,795 | 16 µs | 0 |
-| 10,000 | 8,973 | 16 µs | 0 |
-| 20,000 | 17,974 | 33 µs | 0 |
-| 25,000 | 20,451 | 4.2 ms | **250** |
-| 150,000 | 20,941 | 4.2 ms | **250** |
-
-Microsecond latency and zero evictions through 20k, then a cliff at 25k where all 250 clients evict at once and the client-observed p99 jumps into the milliseconds. With ring depth zero and a ~1.4 µs loop, it's the fan-out to 250 subscribers falling behind while the engine underneath stays at ~16 µs.
-
-My worry was that 20k was just my single load box mistake again. So I split the load generator across several machines, each driving a slice of the 250-client roster. Three worker boxes didn't move the plateau past ~20,500 orders a second. The wall wasn't my sender after all. What set it was how many receivers one engine box has to keep in sync.
-
-To find which part of the fan-out binds, I profiled the engine box under a saturating 60k. Two threads pegged near 100%, the match core (which busy-spins) and exactly one worker. The other six sat between idle and a quarter. That one pegged worker is the projection, the single task draining the outbound ring and routing each event to the right one of 250 lanes. The tasks that actually serialize and write to sockets were spread across the idle workers, nowhere near saturated. So the wall isn't the socket writes or the wire format, it's one thread doing the routing serially. The fix and next step is to shard it across cores, which the ring design now makes safe.
-
-<EgressProfile />
-
-<details class="aside">
-<summary>Aside: then the profiler lied too</summary>
-
-Under `perf`, the saturation signature changed. `outbound_full` jumped to 1,157 and evictions dropped to zero, the opposite of the clean run. `perf`'s own overhead — it wrote 848 MB of stack samples in 15 seconds — had slowed the pegged projection worker enough that the engine's outbound ring backed up before any client lane overflowed. Same wall, surfacing at a different point because the measurement tool perturbed the thing it was measuring. I re-ran without `perf`, confirmed the pegged-worker picture held across three runs, and only then trusted it.
-
-</details>
-
-## Wrapping up
-
-| Dimension | v1 (Python / Redis) | v2 (Rust) |
-|---|---|---|
-| Topology | 4 processes over a Redis bus, CQRS | 1 process, 1 machine, lock-free rings |
-| Order book | `SortedDict` → 99-slot bucket array | flat array ladder + arena, O(1) index |
-| Concurrency | 1 async actor/market (4 total), shared state | single writer, SPSC rings, busy-spin |
-| Durability | none mid-round (heap is truth) | journaled WAL, replay verified every command |
-| Correctness | trusted on the day, thinly tested | 517 tests, 600-case differential + replay |
-| Risk model | ±100 position limit, bots exempt | collateralized worst-case loss |
-| Measured perf | ~150–286/s, p99 28–78 s | ~18k acked at 20k offered, p99 33 µs; 630k+/s in-process |
-| Bottleneck | engine, at a few hundred/s | single-threaded egress routing, not the engine |
-
-The next move is the sharded projection, which the ring design already makes safe. Until it's split across cores, the engine's real single-core wire ceiling stays invisible.
-
-A few things stuck with me from building this.
-
-Optimizations can't just be theoretical, performance testing is a necessary step before shipping. I thought the flat-array book would lead to large performance gains (O(1) vs the tree's O(log n)), but it was only worth ×1.12 because at 99 levels the tree already fits in cache.
-
-I made the load generator wrong twice. First, it shared a core with its own result-draining and throttled itself. Later, `perf` slowed the exact thread it was profiling and moved the bottleneck. Both times the tool measured itself instead of the server. 
-
-Testability is a property of a good design. The single writer and the sequence number made the engine a deterministic function of its input, and made testing cheap at every level. A reference book could check the fast one on every command, replaying the journal reproduced a round exactly, and because a regression showed up in seconds I could rewrite the hot path freely. 
-
-<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Six rounds chasing a delivery ceiling" />
+<SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Finding the delivery bottleneck" />

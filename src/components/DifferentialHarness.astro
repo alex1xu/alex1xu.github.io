@@ -1,7 +1,6 @@
 ---
 // The correctness oracle: one command stream forks into OrderBook (fast, array ladder) and
-// RefBook (slow, rescan Vec). A comparator asserts equal events + snapshot on every command;
-// any mismatch rings the divergence bell.
+// RefBook (slow, rescan Vec). A comparator asserts equal events and snapshots after every command.
 const W = 640, H = 268;
 const srcX = 92, srcY = 118, srcW = 116, srcH = 48;
 const fastX = 300, fastY = 44, refX = 300, refY = 168, dutW = 148, dutH = 52;
@@ -9,7 +8,7 @@ const cmpX = 494, cmpY = 100, cmpW = 108, cmpH = 60;
 const srcCy = srcY + srcH / 2;
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Differential test harness: one command stream forks into two implementations — OrderBook (the fast array-ladder book) and RefBook (a slow reference that rescans a Vec). A comparator asserts their emitted events and full snapshot are equal after every command; on any mismatch a divergence bell fires.">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Differential test harness: one command stream goes to two implementations. OrderBook uses the fast array ladder; RefBook is a simple reference that rescans a vector. The test compares emitted events and logical snapshots after every command.">
     <defs>
       <marker id="dh-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
       <marker id="dh-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
@@ -45,10 +44,9 @@ const srcCy = srcY + srcH / 2;
     <text x={cmpX} y={cmpY + 38} text-anchor="middle" class="bsub">events + snapshot</text>
     <text x={cmpX} y={cmpY + 52} text-anchor="middle" class="bsub">every command</text>
 
-    {/* divergence bell on mismatch */}
-    <text x={cmpX} y={cmpY + cmpH + 26} text-anchor="middle" class="bell">△ mismatch → divergence</text>
+    <text x={cmpX} y={cmpY + cmpH + 26} text-anchor="middle" class="bell">mismatch fails the test</text>
   </svg>
-  <figcaption>Trust a clever data structure by diffing it against a dumb one on every input: the array-ladder <code>OrderBook</code> and a rescan-<code>Vec</code> <code>RefBook</code> consume the same commands, and any divergence in emitted events or the full snapshot fails the test immediately.</figcaption>
+  <figcaption>The fast <code>OrderBook</code> and the simple <code>RefBook</code> receive the same commands. After each command, the test compares their emitted events and logical snapshots. Any difference fails the test.</figcaption>
 </figure>
 
 <style>

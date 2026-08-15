@@ -69,7 +69,7 @@ const W = 720, H = 388;
     <text x={360} y={224} class="ann">and the ~62 clients it alone routes.</text>
     <text x={360} y={246} class="ann dim">every shard sees every event;</text>
     <text x={360} y={261} class="ann dim">acts only on the ones it owns.</text>
-    <text x={20} y={358} class="verdict acc">four cores route in parallel → 4× the throughput per stage</text>
+    <text x={20} y={358} class="verdict acc">four delivery threads route in parallel</text>
 
     <defs>
       <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
@@ -77,7 +77,7 @@ const W = 720, H = 388;
       </marker>
     </defs>
   </svg>
-  <figcaption>The delivery path before and after sharding. The wall was one routing thread fanning every event out to all 250 client lanes serially. Since the output ring was already a Disruptor-style multicast (each consumer has its own cursor, the producer gates on the slowest), sharding is just asking it for four cursors instead of one. Each shard thread sees every event but routes only the ~62 clients it owns by <code>user_id % 4</code>, holding those clients' lanes end to end — so no two shards touch the same lane, and the routing runs on four cores at once.</figcaption>
+  <figcaption>Before sharding, one routing thread handled all 250 client lanes. After sharding, each of four consumers has its own cursor into the output ring and owns a disjoint set of clients selected by <code>user_id % 4</code>. Every shard sees every event but routes only events for its own clients, so no two shards modify the same client lane.</figcaption>
 </figure>
 
 <style>

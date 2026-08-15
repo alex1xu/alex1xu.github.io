@@ -1,7 +1,7 @@
 ---
 // v2 architecture, laid out as a clean left-to-right pipeline with no crossing edges:
 //   clients → gateway → ingress+seq → [SPSC] → engine → [SPMC] → projection → egress → clients
-// The journal tees off ingress downward (a pre-engine branch that never gates the engine);
+// The journal tees off ingress downward on an independent branch that never gates the engine;
 // market-data is a separate 20Hz consumer of the SPMC broadcast.
 // Vertical order is chosen so the delivery path (engine→projection→egress→clients) and the
 // journal tee never overlap. The journal is asynchronous: the diagram shows the final
@@ -24,7 +24,7 @@ const engineCy = engineY + engineH / 2;
 const mdY = 88, projY = 148;
 ---
 <figure class="chart">
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v2 topology as a left-to-right pipeline. WebSocket clients feed a gateway and an ingress-plus-sequencer task. Ingress hands commands over an SPSC ring to a single dedicated engine thread, the only writer, no locks. The engine publishes over an SPMC broadcast ring to a projection task and a separate 20Hz market-data feed. The projection routes events to an egress task, which delivers to the clients. A journal write-ahead log tees off ingress before the engine and never gates it.">
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="v2 topology. WebSocket clients submit through gateway and ingress. Ingress sequences commands, then sends them independently to the engine over an SPSC ring and to the journal. The single engine thread is the only writer of market state. It publishes events over an SPMC ring to projection and a 20 Hz market-data feed; projection routes client events through egress.">
     <defs>
       <marker id="nt-arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--muted)" /></marker>
       <marker id="nt-arr-acc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="var(--accent)" /></marker>
@@ -76,7 +76,7 @@ const mdY = 88, projY = 148;
     <line x1={colTasks} y1={ingressY + rowH} x2={colTasks} y2={jY - 2} stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#nt-arr)" />
     <rect x={colTasks - bw / 2} y={jY} width={bw} height={jH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
     <text x={colTasks} y={jY + 16} text-anchor="middle" class="btask">journal (WAL)</text>
-    <text x={colTasks} y={jY + 29} text-anchor="middle" class="bsub">tees off before the engine</text>
+    <text x={colTasks} y={jY + 29} text-anchor="middle" class="bsub">independent tee</text>
 
     {/* egress box (below journal) */}
     <rect x={colTasks - bw / 2} y={egressY} width={bw} height={rowH} rx="6" fill="var(--bg-soft)" stroke="var(--border)" />
