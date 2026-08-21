@@ -8,13 +8,9 @@ tags: ["cuda", "flashattention", "gpu", "attention", "profiling"]
 
 import Callout from '../../components/Callout.astro';
 import CodeCard from '../../components/CodeCard.astro';
-import MemoryWall from '../../components/MemoryWall.astro';
-import TilingSchematic from '../../components/TilingSchematic.astro';
-import ThroughputLadder from '../../components/ThroughputLadder.astro';
-import RuntimeSplit from '../../components/RuntimeSplit.astro';
-import OccupancyPlateau from '../../components/OccupancyPlateau.astro';
+import ExcalidrawDiagram from '../../components/ExcalidrawDiagram.astro';
 
-I spent a couple of weeks on this FlashAttention mini-project, starting with the forward pass from scratch in CUDA, to get a more hands-on understanding of the key breakthroughs. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems. The three weeks before this I spent learning CUDA fundamentals and FlashAttention, mostly out of [GPU MODE](https://www.youtube.com/@GPUMODE) lectures, Stanford's [CS336](https://stanford-cs336.github.io/), the PMPP book, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). I took CS 152, the upper-division computer architecture class, at UC Berkeley this past spring and have previously worked with Trainium and NKI, so a lot of the ideas came naturally. But it's one thing to read about how to program GPUs, and another to actually do it, and make a kernel go fast.
+I spent a couple of weeks writing the FlashAttention forward pass from scratch in CUDA to separate what I understood from what I could actually measure. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems. I came in with CUDA and FlashAttention material from [GPU MODE](https://www.youtube.com/@GPUMODE), Stanford's [CS336](https://stanford-cs336.github.io/), PMPP, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). Reading them helped, but making one correct and fast was different.
 
 <Callout type="lesson" title="TL;DR">
 "FlashAttention is fast" bundles two separate wins, which initially wasn't super clear to me, but building it forced them apart.
@@ -22,7 +18,7 @@ I spent a couple of weeks on this FlashAttention mini-project, starting with the
 - **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
 - **Going fast is the second win, and the online-softmax trick has little to do with it.** The trick is what makes the memory win possible, but it is not where the *time* goes. Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
 - **The perf gap to SDPA wasn't where I first thought.** I thought I was memory-bound, spending my time moving K and V. When I measured it, occupancy and softmax both came back as non-issues. I have a new theory for the gap, but I can't cleanly test it without a profiler.
-- **Programming is hard 😭** I spent hours debugging nothing because a kernel never launched and the GPU swapped underneath me.
+- **A launch failure and a GPU swap both cost me time.** The debugging details are below.
 
 This is the forward pass, measured on one A100. The backward pass and the Hopper FA3/4 are left to a follow-up.
 </Callout>
@@ -32,6 +28,8 @@ Everything here ran on a single **A100-SXM4-80GB** (108 SMs, 2.0 TB/s HBM, 312 F
 ## The memory wall
 
 Before writing a single kernel I wrote the naive baseline to better understand the problem (and the solution).
+
+For each query position, attention scores it against every key, then uses those scores to mix the values. Batches and heads repeat that operation. The expensive intermediate is the table of all query-key scores.
 
 <CodeCard file="naive.py">
 ```python
@@ -47,13 +45,11 @@ def naive_attention(q, k, v):
 
 For the `[B, H, N, N]` scores tensor, at `B=8, H=16, N=8192` in fp16 it's `8·16·8192·8192·2` bytes, which is **17 GB** for one intermediate. Softmax reads the scores to write the probabilities, so both are resident at once and you hold it twice. I swept sequence length:
 
-<MemoryWall />
+Even on an 80 GB A100, naive attention falls over at `N=16384`. The scores are ~69 GB on their own, and ~137 GB once softmax holds the second copy. Shrinking the batch buys room, but does not change the O(N²) dependence on sequence length.
 
-Even on an 80 GB A100, naive attention falls over at `N=16384`. The scores are ~69 GB on their own, and ~137 GB once softmax holds the second copy. Shrinking the batch buys you room, since the tensor is linear in `B·H`, but it doesn't remove the wall. The blowup is O(N²) in sequence length, so a longer context walks you back into it at any batch size and you trade away throughput to get there.
+FlashAttention never materializes that tensor. It processes a score tile, carries the running softmax state forward, then discards the tile.
 
-FlashAttention's claim is that you never have to materialize that tensor at all. You tile it, keep a running softmax, and the memory drops from O(N²) to O(N).
-
-<TilingSchematic />
+<ExcalidrawDiagram name="attention-memory" alt="Naive attention materializes an N by N score matrix in HBM. FlashAttention streams one score tile through SRAM while retaining only running softmax state and output." caption="Naive attention keeps all scores. The tiled version keeps only the current tile and running state." />
 
 But dropping the memory is not what makes FlashAttention fast, which surprised me.
 
@@ -181,7 +177,7 @@ I expected tiling to trade a little accuracy for the memory savings, since I'm s
 
 So I had tensor cores, the real FA2 schedule, and numerical correctness. The kernel above, one warp and 16 keys per block, runs at **~14.7 TFLOP/s, about 7% of SDPA**, still 3.7× slower than the naive baseline I was trying to beat. Widening the K/V block to 64 keys amortizes each softmax update over more work and lifts it to **~21 TFLOP/s**, a real ×1.44. But that's where it plateaus.
 
-<ThroughputLadder />
+<ExcalidrawDiagram name="flash-two-wins" alt="A comparison of naive, scalar tiled, and tensor-core tiled attention showing that fitting in memory and reaching high throughput are separate outcomes." caption="The tiled scalar kernel fits at N=16384 but is slower. Tensor cores improve throughput without changing the memory result." />
 
 Tensor cores were necessary, but surprisingly to me nowhere near sufficient. The remaining gap from 21 to SDPA's ~200 was really interesting.
 
@@ -201,15 +197,13 @@ One warp per block runs at about 10 warps per SM, roughly 16% of the card's 64-w
 
 It made it worse! Throughput **fell about 21%**, from 21 TF to ~16.6. I think the bigger shared-memory footprint meant only two blocks fit per SM, so warps-per-SM went down rather than up. But four warps moved several things at once, the tile decomposition and the shared-memory use along with the occupancy, so it's not a clear result. A cleaner test may be to pad the 21 TF kernel with shared memory it never reads, just to reserve the space. That lowers how many blocks fit on an SM and changes nothing else. (Occupancy is really resident warps per SM, but every block here is one warp, so blocks per SM is the same axis.)
 
-<OccupancyPlateau />
-
 Throughput climbs with occupancy up to about 5 blocks per SM and then flattens near 21. My kernel already runs at 10 blocks per SM, out on the flat part, so it isn't starved for occupancy. That explains the four-warp result too: I was already past the point where more warps help.
 
 ### Idea 3: the softmax glue is the cost
 
 After the first two ideas, I stripped the online-softmax work out of the kernel entirely (the `exp`, the running max, and the rescale) and re-timed against the full kernel, as well as against a variant with just the `exp` removed.
 
-<RuntimeSplit />
+<ExcalidrawDiagram name="flash-ablations" alt="Three ablation experiments show that online softmax is about two percent of runtime, occupancy plateaus after five blocks per SM, and a wider K V tile improves throughput only modestly." caption="These measurements narrow the search but do not identify the remaining bottleneck." />
 
 At `N=4096` the full kernel is 52.0 ms and the no-softmax kernel is 51.0 ms. The online softmax, it turned out, was only **~2% of the runtime** here. Removing the `exp` alone does nothing measurable. The algorithm was not the bottleneck.
 

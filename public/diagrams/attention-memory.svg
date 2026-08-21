@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" role="img" aria-labelledby="title desc">
+  <title id="title">Attention memory: materialize versus stream</title><desc id="desc">Attention memory: materialize versus stream</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6"/></marker></defs>
+  <style>
+    svg { background: #fffdf8; } .node rect { fill:#fffdf8; stroke:#2f302d; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+    .node.accent rect,.accent { stroke:#b85c38; fill:#fff1e8; } .node.good rect,.good { stroke:#557a61; fill:#edf5ed; } .node.warn rect,.warn { stroke:#a45a35; fill:#fff0e8; }
+    .arrow { fill:none; stroke:#2f302d; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; } .arrow.dashed { stroke-dasharray:7 6; } .arrow.accent { stroke:#b85c38; }
+    .label,.node-title,.node-note,.caption,.value { fill:#2f302d; font-family: ui-rounded, 'Comic Sans MS', sans-serif; } .label { font-size:16px; font-weight:650; } .node-title { font-size:16px; font-weight:700; } .node-note { font-size:12px; fill:#62645e; } .caption { font-size:14px; fill:#62645e; } .value { font-size:14px; font-weight:700; } .value.accent { fill:#b85c38; } .value.good { fill:#557a61; }
+    .dot { fill:#2f302d; } .dot.accent { fill:#b85c38; } .dot.good { fill:#557a61; } .line { stroke:#c9c5bb; stroke-width:1.5; stroke-dasharray:4 6; }
+  </style>
+      <g class="node "><rect x="42" y="95" width="116" height="62" rx="8"/><text x="100" y="121" class="node-title" text-anchor="middle">Q, K, V</text><text x="100" y="139" class="node-note" text-anchor="middle">input tensors</text></g>
+      <path class="arrow " d="M 158 126 L 220 126" marker-end="url(#arrow)"/><g class="node warn"><rect x="220" y="78" width="170" height="98" rx="8"/><text x="305" y="122" class="node-title" text-anchor="middle">naive attention</text><text x="305" y="140" class="node-note" text-anchor="middle">form every score</text></g><path class="arrow " d="M 390 126 L 462 126" marker-end="url(#arrow)"/><g class="node warn"><rect x="462" y="78" width="210" height="98" rx="8"/><text x="567" y="122" class="node-title" text-anchor="middle">N × N scores in HBM</text><text x="567" y="140" class="node-note" text-anchor="middle">then softmax</text></g>
+      <text x="446" y="205" class="caption" text-anchor="middle">memory grows with every query-key pair</text>
+      <path class="line" d="M40 232 L720 232"/>
+      <g class="node "><rect x="42" y="279" width="116" height="62" rx="8"/><text x="100" y="305" class="node-title" text-anchor="middle">Q, K, V</text><text x="100" y="323" class="node-note" text-anchor="middle">input blocks</text></g><path class="arrow " d="M 158 310 L 220 310" marker-end="url(#arrow)"/><g class="node "><rect x="220" y="263" width="170" height="96" rx="8"/><text x="305" y="306" class="node-title" text-anchor="middle">FlashAttention</text><text x="305" y="324" class="node-note" text-anchor="middle">hold one Q block</text></g><path class="arrow accent" d="M 390 310 L 462 310" marker-end="url(#arrow)"/><g class="node accent"><rect x="462" y="263" width="210" height="96" rx="8"/><text x="567" y="306" class="node-title" text-anchor="middle">one score tile in SRAM</text><text x="567" y="324" class="node-note" text-anchor="middle">stream K/V blocks</text></g>
+      <text x="567" y="388" class="caption" text-anchor="middle">carry (max, denominator, output) forward, then discard the tile</text></svg>
