@@ -1,8 +1,8 @@
 ---
-title: "FlashAttention bundles two separate wins"
+title: "Writing FlashAttention from scratch: two separate wins"
 date: "2026-06-24"
 updated: "2026-07-11"
-description: "I wrote the FlashAttention forward pass from scratch in CUDA to understand where 'it's fast because it's IO-aware' actually comes from. It bundles two separate wins, and in my kernel the online-softmax trick everyone teaches came to about 2% of the runtime."
+description: "I wrote the FlashAttention forward pass from scratch in CUDA to understand its memory and performance tradeoffs. In my kernel, the online-softmax trick everyone teaches came to about 2% of runtime."
 tags: ["cuda", "flashattention", "gpu", "attention", "profiling"]
 ---
 
@@ -10,10 +10,10 @@ import Callout from '../../components/Callout.astro';
 import CodeCard from '../../components/CodeCard.astro';
 import ExcalidrawDiagram from '../../components/ExcalidrawDiagram.astro';
 
-I spent a couple of weeks writing the FlashAttention forward pass from scratch in CUDA to separate what I understood from what I could actually measure. This is part of a [summer I'm spending](/blog/blog-motivation) going deep on ML systems. I came in with CUDA and FlashAttention material from [GPU MODE](https://www.youtube.com/@GPUMODE), Stanford's [CS336](https://stanford-cs336.github.io/), PMPP, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). Reading them helped, but making one correct and fast was different.
+I spent a couple of weeks writing the FlashAttention forward pass from scratch in CUDA because I wanted to see what the usual “IO-aware” explanation looked like in a kernel I had built myself. I’m spending the summer going deeper on ML systems, starting with material from [GPU MODE](https://www.youtube.com/@GPUMODE), Stanford's [CS336](https://stanford-cs336.github.io/), PMPP, and the FlashAttention papers ([FA1](https://arxiv.org/abs/2205.14135), [FA2](https://arxiv.org/abs/2307.08691)). Reading helped, but building and measuring the kernel exposed different questions.
 
 <Callout type="lesson" title="TL;DR">
-"FlashAttention is fast" bundles two separate wins, which initially wasn't super clear to me, but building it forced them apart.
+Building this made two separate jobs clearer to me: making attention fit in memory and making it run quickly.
 
 - **Tiling fixes memory, and on its own it made my kernel 11× slower.** Never materializing the `N×N` scores drops the footprint from O(N²) to O(N). My tiled kernel ran `N=16384` in **2.15 GB** where the naive version needed ~137 GB and ran out of memory. But that kernel did **5 TFLOP/s** against the naive baseline's **54**, because it runs its arithmetic on the general-purpose cores while naive's matmuls go straight to cuBLAS's tensor cores.
 - **Going fast is the second win, and the online-softmax trick has little to do with it.** The trick is what makes the memory win possible, but it is not where the *time* goes. Adding tensor cores got me to **~21 TFLOP/s, about 10% of PyTorch's SDPA** (~200 TF). I had a few ideas about the rest of the gap. When I ablated the online-softmax (which many tutorials spend their length on), it came to **~2% of the runtime** in my kernel.
