@@ -156,18 +156,6 @@
     ]
   },
   {
-    "date": "2026-09-18",
-    "title": "Reproduce the FlashAttention baseline and rebuild measurement habits",
-    "status": "upcoming",
-    "phase": "Re-entry",
-    "links": [
-      {
-        "label": "PyTorch benchmark utilities",
-        "url": "https://docs.pytorch.org/docs/stable/benchmark_utils.html"
-      }
-    ]
-  },
-  {
     "date": "2026-09-21",
     "endDate": "2026-09-25",
     "title": "Build autodiff and transformer objectives from first principles",
