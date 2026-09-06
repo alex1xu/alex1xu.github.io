@@ -5,7 +5,7 @@ type Status = 'done' | 'upcoming';
 interface Link { label: string; url: string; }
 interface Entry {
   date: string; endDate?: string; title: string;
-  status: Status; phase?: string; repo?: string; links?: Link[]; blog?: string;
+  status: Status; phase?: string; links?: Link[]; blog?: string;
 }
 const entries = learning as Entry[];
 
@@ -97,8 +97,6 @@ const popoverData = Object.fromEntries(
               <span class="log-title">{e.title}</span>
             </div>
             {e.phase && <div class="log-phase">{e.phase}</div>}
-            {/* repo chip disabled — add a `repo` field to an entry and uncomment to show it:
-                {e.repo && <a class="log-repo" href={`https://github.com/${e.repo}`} target="_blank" rel="noopener noreferrer">↗ {e.repo}</a>} */}
             {e.links && e.links.length > 0 && (
               <ul class="log-links">
                 {e.links.map(l => (

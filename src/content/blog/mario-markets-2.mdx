@@ -6,18 +6,15 @@ tags: ["rust", "systems", "trading", "performance", "profiling", "tokio"]
 ---
 
 import SeriesNav from '../../components/SeriesNav.astro';
-import CeilingStaircase from '../../components/CeilingStaircase.astro';
-import JournalCoupling from '../../components/JournalCoupling.astro';
-import TwoSidedQueue from '../../components/TwoSidedQueue.astro';
-import ShardingTopology from '../../components/ShardingTopology.astro';
+import ExcalidrawDiagram from '../../components/ExcalidrawDiagram.astro';
 
 <SeriesNav dir="prev" href="/blog/mario-markets" kicker="Part 1" title="A single-writer exchange engine" />
 
-[Part one](/blog/mario-markets) described the matching engine. In isolation it processed roughly 630,000–690,000 commands per second. With 250 connected clients, the full service initially stopped near 20,000 acknowledged orders per second. Matching was not the constraint; delivering the engine's output was.
+[Part one](/blog/mario-markets) described the matching engine. In isolation it processed roughly 630,000–690,000 commands per second. With 250 connected clients, the full service initially stopped near 20,000 acknowledged orders per second, so the constraint was delivering the engine's output rather than matching.
 
-This was not one optimization. Each change exposed a different limit, and several changes that reduced real CPU cost did not move throughput at all.
+The work was not one optimization. Each change exposed a different limit, and several changes that reduced real CPU cost did not move throughput at all.
 
-<CeilingStaircase />
+<ExcalidrawDiagram name="delivery-ceilings" alt="The delivery ceiling rises from 27 thousand to 31 thousand to 54 thousand to 97 thousand orders per second. Decoupling the journal and sharding delivery account for the big jumps, while two cleanups did not move the ceiling." caption="Decoupling the journal and sharding delivery produced the large throughput changes. The other two changes did not move the measured ceiling." />
 
 ## Start with the output contract
 
@@ -34,9 +31,9 @@ That distinction mattered throughout the investigation. A smaller or cheaper ope
 
 At the 31k plateau, one Tokio worker was fully utilized while several cores were mostly idle. It was the routing task that drained engine output and placed each event on the appropriate client lane. Most of that core's time was Tokio scheduling overhead rather than routing itself, so I moved the task to a dedicated busy-poll thread.
 
-The change worked as intended: the task's CPU use fell from about 99% to 30%, freeing a core. Throughput did not change. That worker had been expensive, but it had not been the limiting stage.
+The change worked as intended: the task's CPU use fell from about 99% to 30% and freed a core. Throughput did not change, because that worker had been expensive without being the limiting stage.
 
-The next profile made the engine look fully utilized. The same reasoning prevented a false conclusion. The engine's matching work was only a small fraction of samples; it spent most of its time busy-spinning on an empty input ring. It was not overloaded. It was starved of commands.
+The next profile made the engine look fully utilized, but the same reasoning prevented a false conclusion. Matching was only a small fraction of its samples, while the engine spent most of its time busy-spinning on an empty input ring. It was starved of commands, not overloaded.
 
 ## A journal bug was blocking admission
 
@@ -44,21 +41,19 @@ The journal records sequenced commands for recovery. The design allowed a short 
 
 In practice, ingress first handed each command to a bounded journal path and only then handed it to the engine. The journal thread sometimes blocked in `fsync`. Once its queue filled, ingress stopped admitting orders and the engine spun on an empty ring.
 
-<JournalCoupling />
+<ExcalidrawDiagram name="backpressure-evidence" alt="Before the fix, orders went through a journal fsync before reaching the engine, so the queue could fill and leave the engine idle. The server receive queue reached 126 MB. After the fix, orders reach the engine while a copy goes to the journal." caption="The server's 126 MB receive queue showed that the engine was not receiving orders. The journal remains behind the engine after the change." />
 
 This was hard to see in a CPU flamegraph. `fsync` waits on storage in the kernel, so the journal thread is off CPU and receives few samples. The busy-spinning engine, meanwhile, looks hot even while it has no work.
 
 The fix was to restore the intended independent tee: ingress gives the command to the engine immediately and sends a copy to the journal separately. The journal group-commits writes in the background. This moved the ceiling from about 31k to 54k orders per second.
 
-This change also exposed a correctness consideration that the replay tests did not cover. Enlarging a journal batch can widen the duration of the acknowledged-but-unflushed window under sustained traffic. Replay proves that persisted input reproduces the engine; it does not prove how quickly an acknowledgement becomes durable. The durability window needed its own bound and test.
+This change also exposed something the replay tests did not cover. Enlarging a journal batch can widen the acknowledged-but-unflushed window under sustained traffic. Replay proves that persisted input reproduces the engine, but it says nothing about how quickly an acknowledgement becomes durable. That window needed its own bound and test.
 
 ## Locate queues before changing code
 
 At the next plateau, several plausible fixes did not move throughput. Moving routing off Tokio had freed a core. Replacing deep per-event copies with `Arc`, Rust's standard atomic reference-counted pointer, removed copying under a lock. Neither changed the knee.
 
 The useful measurement was socket queue depth, collected with `ss` on the server and load generators.
-
-<TwoSidedQueue />
 
 The server had 126 MB of unread orders in its inbound socket queue, while its outbound queue was small and the load generators' queues were nearly empty. The generators were sending and reading correctly. The server was failing to read incoming orders because a downstream delivery stage was holding up the pipeline.
 
@@ -68,13 +63,13 @@ This also explained an apparent network-latency discrepancy. In-system timing be
 
 The output ring already let several consumers read the same ordered event stream through independent cursors. But only one delivery consumer existed. It routed every event for every client, one after another, so it set the ceiling even when other cores were available.
 
-<ShardingTopology />
+<ExcalidrawDiagram name="delivery-shards" alt="Before sharding, one consumer routed all events to 250 client lanes. Afterward, four consumers each have an independent cursor and own clients selected by user ID modulo four." caption="Each client remains assigned to one delivery shard, so its events still arrive in order." />
 
 I split clients into four delivery shards using `user_id % 4`. Each shard owns its subset of clients end to end: its ring cursor, client lanes, and delivery state. Every shard reads the ordered event stream, but routes only events for its own clients. A client always remains on one shard, preserving client-level event order without shared locks.
 
 The leaderboard was replicated rather than shared. That is safe because every shard sees the same deterministic event stream and derives the same value. The one non-idempotent settlement write ran only on shard 0.
 
-Sharding moved the clean end-to-end ceiling from about 54k to 97k orders per second. At that point the single pegged delivery consumer was gone; work was spread across the delivery shards and socket-writing workers.
+Sharding moved the clean end-to-end ceiling from about 54k to 97k orders per second. The single pegged delivery consumer was gone, with work spread across the delivery shards and socket-writing workers.
 
 ## Fix the measuring instrument too
 
@@ -93,6 +88,6 @@ The major capacity gains came from two structural changes:
 
 Batching market data was still necessary because it removed a separate slow-client failure mode. Moving routing off the async runtime and removing deep copies were still correct cleanups. They just did not set the throughput limit at the time they were made.
 
-The broader lesson was to treat performance as a queueing problem, not a list of expensive functions. CPU profiles show where code runs; they do not directly show blocked I/O, serial ownership, or queues outside the process. The engine's matching loop was fast from the beginning. The work was finding where the surrounding system prevented it from receiving or delivering work.
+I came away treating performance as a queueing problem, not just a list of expensive functions. CPU profiles show where code runs, but not necessarily blocked I/O, serial ownership, or queues outside the process. The matching loop was fast from the beginning, and the work was finding where the rest of the system kept it from receiving or delivering work.
 
 <SeriesNav dir="prev" href="/blog/mario-markets" kicker="Part 1" title="A single-writer exchange engine" />

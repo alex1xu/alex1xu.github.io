@@ -4,7 +4,6 @@ import Hero from '../components/Hero.astro';
 import { Image } from 'astro:assets';
 
 import me from '../assets/photos/me.jpg';
-import highschool from '../assets/photos/highschool.jpg';
 import sfscene from '../assets/photos/sfscene.jpg';
 import ambulance from '../assets/photos/ambulance.jpg';
 import naturescene from '../assets/photos/naturescene.jpg';
@@ -12,7 +11,6 @@ import traders from '../assets/photos/traders.jpg';
 import saas from '../assets/photos/saas.jpg';
 
 const wideSizes = '(max-width: 720px) 100vw, 680px';
-const tallSizes = '(max-width: 420px) 88vw, 360px';
 ---
 <Base title="About">
   <Hero page="about" />
@@ -23,25 +21,8 @@ const tallSizes = '(max-width: 420px) 88vw, 360px';
     <div class="bio-part">
       <p>
         I grew up in New York. During COVID I taught myself Java and got hooked 
-        on competitive programming. This was my first real passion for anything 
-        academic (I only liked playing video games haha). Each day I explored 
-        something new and built hobby projects.
-      </p>
-    </div>
-
-    <figure class="photo photo-tall">
-      <Image src={highschool} alt="High school years in New York" widths={[360, 720]} sizes={tallSizes} />
-    </figure>
-
-    <div class="bio-part">
-      <p>
-        In September 2024 I moved to California to study CS at UC Berkeley.
-        Freshman spring I took computer architecture with Professor Lisa Yan,
-        and it blew my mind, literally rewired how I think about software. Since
-        then my interests have shifted toward systems and hardware. Sophomore
-        year I took operating systems, compilers, database systems, graduate
-        computer architecture, digital circuit design (ASICs), and internet
-        architecture.
+        on competitive programming. Each day I explored something new and built
+        hobby projects.
       </p>
     </div>
 
@@ -51,8 +32,12 @@ const tallSizes = '(max-width: 420px) 88vw, 360px';
 
     <div class="bio-part">
       <p>
-        Now I'm graduating two years early to keep exploring. Please reach out
-        if you have internship or full-time opportunities starting Fall 2026!
+        I moved to California to study CS at UC Berkeley. Freshman spring I took
+        computer architecture with Professor Lisa Yan, and it blew my mind. Since
+        then my interests have shifted toward systems and hardware. Sophomore
+        year I took operating systems, compilers, database systems, graduate
+        computer architecture, digital circuit design (ASICs), and internet
+        architecture.
       </p>
     </div>
 
@@ -68,7 +53,7 @@ const tallSizes = '(max-width: 420px) 88vw, 360px';
     </figure>
 
     <div class="bio-part">
-      <p>These days I still enjoy camping and exploring national parks with my family.</p>
+      <p>These days I enjoy camping and exploring national parks with my family.</p>
     </div>
 
     <figure class="photo photo-wide">
@@ -77,8 +62,8 @@ const tallSizes = '(max-width: 420px) 88vw, 360px';
 
     <div class="bio-part">
       <p>
-        I am also heavily involved with two clubs, Traders at
-        Berkeley and SAAS, which have been a highlight of my college experience!
+        I am involved with two clubs, Traders at Berkeley and SAAS, which have
+        been a highlight of my college experience.
       </p>
     </div>
 
@@ -87,7 +72,7 @@ const tallSizes = '(max-width: 420px) 88vw, 360px';
         <Image src={saas} alt="Student Association for Applied Statistics" widths={[480, 960]} sizes={wideSizes} />
       </figure>
       <figure class="photo photo-tall">
-        <Image src={traders} alt="Traders at Berkeley" widths={[300, 600]} sizes={tallSizes} />
+        <Image src={traders} alt="Traders at Berkeley" widths={[300, 600]} sizes="(max-width: 420px) 88vw, 360px" />
       </figure>
     </div>
 

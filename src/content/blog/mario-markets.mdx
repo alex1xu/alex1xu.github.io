@@ -6,9 +6,7 @@ tags: ["rust", "systems", "trading", "orderbook", "performance"]
 ---
 
 import SeriesNav from '../../components/SeriesNav.astro';
-import NewTopology from '../../components/NewTopology.astro';
-import DifferentialHarness from '../../components/DifferentialHarness.astro';
-import ArrayLadder from '../../components/ArrayLadder.astro';
+import ExcalidrawDiagram from '../../components/ExcalidrawDiagram.astro';
 
 <SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Finding the delivery bottleneck" />
 
@@ -20,7 +18,7 @@ This post covers the Rust rewrite: what the engine owns, why it has one writer, 
 
 Each market asks whether one racer will finish best of the four. A YES contract pays 100 cents if that racer wins and 0 otherwise. Traders buy or sell YES at integer prices from 1 to 99 cents. Buying YES at 40 cents therefore risks 40 cents for a possible 100-cent payout.
 
-Each market uses a continuous limit order book. A limit order may wait in the book at its stated price; a market order takes available liquidity immediately. When a new order can trade with a resting order, the best price trades first. At the same price, the earlier resting order trades first. The engine also tracks positions, collateral, cancellations, settlement, and the round leaderboard.
+Each market uses a continuous limit order book. A limit order waits at its stated price, while a market order takes available liquidity immediately. When a new order can trade with a resting order, the best price trades first. At the same price, the earlier resting order trades first. The engine also tracks positions, collateral, cancellations, settlement, and the round leaderboard.
 
 ## Why rewrite the first version
 
@@ -32,9 +30,9 @@ The rewrite was not an attempt to make every part of the service low level. It w
 
 The Rust engine runs on one dedicated OS thread. It is the only code allowed to mutate the active round: every order book, position, wallet, collateral reservation, and settlement state.
 
-<NewTopology />
+<ExcalidrawDiagram name="engine-boundary" alt="Clients send sequenced commands to a single-writer engine. The engine publishes reliable client events and periodic market snapshots. The journal records the input stream on a separate path." caption="Network tasks move messages. The engine thread changes books, risk, wallets, and settlement state." />
 
-Network I/O runs in Tokio, the standard Rust async runtime. Tokio tasks accept WebSocket traffic, manage connections, and pass commands to ingress. The engine is not a Tokio task. Matching is CPU-bound and latency-sensitive; it should not be scheduled alongside network tasks that repeatedly wait for sockets.
+Network I/O runs in Tokio, the standard Rust async runtime. Its tasks accept WebSocket traffic, manage connections, and pass commands to ingress. The engine itself runs on a dedicated thread because matching is CPU-bound and latency-sensitive, unlike the socket work around it.
 
 Ingress assigns each accepted command a global sequence number and an arrival timestamp. It sends the resulting `SequencedCommand` to the engine over a bounded single-producer/single-consumer ring. The engine consumes commands in that order and produces events into an outbound multicast ring.
 
@@ -44,7 +42,7 @@ This creates a useful boundary:
 - The engine side owns the exchange state.
 - The rings transfer messages between those owners without giving either side direct access to the other's state.
 
-The inbound ring has exactly one producer, ingress, and one consumer, the engine. The outbound ring has one producer, the engine, and several consumers. Projection delivers reliable acknowledgements, fills, and cancels to the relevant client. Market data is separate and publishes current snapshots at 20 Hz; an old snapshot can be discarded because the next one replaces it.
+The inbound ring has exactly one producer, ingress, and one consumer, the engine. The outbound ring has one producer, the engine, and several consumers. Projection delivers reliable acknowledgements, fills, and cancels to the relevant client. A separate 20 Hz market-data feed publishes current snapshots, so an old snapshot can be discarded when the next one arrives.
 
 ### Why one writer
 
@@ -56,19 +54,19 @@ A single engine shard uses one core. The bare engine sustained about 630,000–6
 
 Ingress also tees each sequenced command to a journal writer. The journal records the engine's input stream, not a derived snapshot or output event. Replaying that stream reconstructs the round.
 
-The journal is off the matching path. It group-commits disk writes rather than flushing every command. That gives a bounded durability window: a hard crash can lose recently acknowledged commands that have not yet been flushed. For a short live event where the fallback was restarting a round, that was acceptable. A slow disk could not delay trading; an admission-path bug that violated that rule is covered in part two.
+The journal is off the matching path and group-commits disk writes rather than flushing every command. That leaves a bounded durability window: a hard crash can lose recently acknowledged commands that have not yet been flushed. For a short live event where restarting a round was the fallback, that was acceptable. A slow disk was not supposed to delay trading. Part two covers the admission-path bug that let it do so.
 
 ## Matching and risk
 
-For a new order, the engine validates the request, checks the user's risk limit, reserves worst-case collateral, and then matches against the best eligible resting orders. A buy takes the lowest available sells at or below its limit; a sell takes the highest available buys at or above its limit. A fill executes at the resting order's price. Any remaining good-till-cancel limit quantity joins the book; market and immediate-or-cancel remainders are released.
+For a new order, the engine validates the request, checks the user's risk limit, reserves worst-case collateral, and then matches against the best eligible resting orders. A buy takes the lowest available sells at or below its limit, while a sell takes the highest available buys at or above its limit. Fills execute at the resting order's price. Any remaining good-till-cancel limit quantity joins the book. Market and immediate-or-cancel remainders are released.
 
-Collateral is the maximum amount a player could lose if the order fills. Buying `N` YES contracts at `p` cents reserves `N × p`; selling them reserves `N × (100 - p)`. The risk engine sits above all books so it can enforce a player's round-wide budget as well as a per-market position cap.
+Collateral is the maximum amount a player could lose if the order fills. Buying `N` YES contracts at `p` cents reserves `N × p`, while selling them reserves `N × (100 - p)`. The risk engine sits above all books so it can enforce a player's round-wide budget as well as a per-market position cap.
 
 ## Testing the fast book against a simple one
 
 The production book uses cached best prices, compact order handles, and constant-time list updates. Those optimizations make it easy to introduce a bug that is almost invisible in hand-written examples. Instead of relying on more examples, I wrote a second book with a simple implementation.
 
-<DifferentialHarness />
+<ExcalidrawDiagram name="book-confidence" alt="The same randomized command stream is run through an optimized order book and a simple reference book, then their events and resting orders are compared after every command. A journal replay checks a fresh engine too." caption="The reference book is slower, but its behavior is easy to inspect." />
 
 `RefBook` keeps resting orders in a flat vector and rescans it to find the next order to match. It is slow, but its behavior is easy to inspect. Tests feed both books the same randomized command stream and, after every command, compare emitted events and logical resting orders. They also check independent invariants on the production book: positions sum to zero within a market, collateral never goes negative, and a resting book is never crossed.
 
@@ -78,18 +76,16 @@ The same determinism supports replay tests: journal a generated command stream, 
 
 The exchange used a fixed 1–99-cent price range. That mattered more than the nominal choice between a tree and an array.
 
-<ArrayLadder />
-
-A generic `BTreeMap` maps a price to a price level with a comparison-tree lookup. Here, a price is already a bounded integer, so the array ladder uses `index = price - low`. Each slot stores the head and tail of a FIFO queue for that price. Accessing a level is constant time; when the best level empties, finding the next one is a scan over at most 99 slots.
+A generic `BTreeMap` maps a price to a price level with a comparison-tree lookup. Here, a price is already a bounded integer, so the array ladder uses `index = price - low`. Each slot stores the head and tail of a FIFO queue for that price. Accessing a level is constant time, and finding the next one after it empties is a scan over at most 99 slots.
 
 The array improved sustained throughput by about 1.12× over the `BTreeMap` comparison, with no material p99 change. That result was useful because it kept the claim proportional: the price range is so small that the tree has little work to do.
 
-The larger effect came from order allocation. Resting orders live in a pre-sized arena. An insert takes a free slot; a complete fill or cancellation returns it. The queue links use compact arena indices rather than separately allocated list nodes. Against heap-allocated order nodes in the tree implementation, this raised throughput by about 5.3× and reduced p99 from 131 µs to 2 µs. The point was not that Rust normally requires manual allocation—it does not—but that allocation variability did not belong in the matching path.
+The larger effect came from order allocation. Resting orders live in a pre-sized arena, where an insert takes a free slot and a complete fill or cancellation returns it. The queue links use compact arena indices rather than separately allocated list nodes. Against heap-allocated order nodes in the tree implementation, this raised throughput by about 5.3× and reduced p99 from 131 µs to 2 µs. Rust does not normally require manual allocation. Here, avoiding allocation variability on the matching path was worth it.
 
 ## Where the first end-to-end ceiling was
 
 At 20,000 offered orders per second with 250 clients, the service acknowledged about 18,000 orders per second with engine-side p99 of 33 µs. The bare engine was clearly not the limit. The output side was: one routing task had to distribute events across hundreds of client lanes.
 
-Part two follows that bottleneck from roughly 20,000 to 97,000 end-to-end orders per second. The important distinction is that the matching engine was already fast; the remaining work was identifying where the rest of the system was serial, blocked, or measuring itself instead of the service.
+Part two follows that bottleneck from roughly 20,000 to 97,000 end-to-end orders per second. The matching engine was already fast, so the work was finding where the rest of the system was serial, blocked, or measuring itself instead of the service.
 
 <SeriesNav dir="next" href="/blog/mario-markets-2" kicker="Part 2" title="Finding the delivery bottleneck" />

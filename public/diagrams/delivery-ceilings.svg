@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" role="img" aria-labelledby="title desc">
+  <title id="title">Delivery ceiling investigation</title><desc id="desc">Delivery ceiling investigation</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6"/></marker></defs>
+  <style>
+    svg { background: #fffdf8; } .node rect { fill:#fffdf8; stroke:#2f302d; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+    .node.accent rect,.accent { stroke:#b85c38; fill:#fff1e8; } .node.good rect,.good { stroke:#557a61; fill:#edf5ed; } .node.warn rect,.warn { stroke:#a45a35; fill:#fff0e8; }
+    .arrow { fill:none; stroke:#2f302d; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; } .arrow.dashed { stroke-dasharray:7 6; } .arrow.accent { stroke:#b85c38; }
+    .label,.node-title,.node-note,.caption,.value { fill:#2f302d; font-family: ui-rounded, 'Comic Sans MS', sans-serif; } .label { font-size:16px; font-weight:650; } .node-title { font-size:16px; font-weight:700; } .node-note { font-size:12px; fill:#62645e; } .caption { font-size:14px; fill:#62645e; } .value { font-size:14px; font-weight:700; } .value.accent { fill:#b85c38; } .value.good { fill:#557a61; }
+    .dot { fill:#2f302d; } .dot.accent { fill:#b85c38; } .dot.good { fill:#557a61; } .line { stroke:#c9c5bb; stroke-width:1.5; stroke-dasharray:4 6; }
+  </style><path class="line" d="M72 326 L704 326"/><path class="line" d="M72 84 L72 326"/>
+      <path class="arrow" d="M112 288 L272 274 L432 182 L592 98" marker-end="url(#arrow)"/>
+      <circle class="dot " cx="112" cy="288" r="5"/><text x="112" y="276" class="value " text-anchor="middle">27k</text><circle class="dot " cx="272" cy="274" r="5"/><text x="272" y="262" class="value " text-anchor="middle">31k</text><circle class="dot accent" cx="432" cy="182" r="5"/><text x="432" y="170" class="value accent" text-anchor="middle">54k</text><circle class="dot accent" cx="592" cy="98" r="5"/><text x="592" y="86" class="value accent" text-anchor="middle">97k</text>
+      <text x="112" y="350" class="caption" text-anchor="middle">baseline</text><text x="272" y="350" class="caption" text-anchor="middle">batch market data</text><text x="432" y="350" class="caption" text-anchor="middle">journal off admission</text><text x="592" y="350" class="caption" text-anchor="middle">four delivery shards</text>
+      <text x="380" y="390" class="caption" text-anchor="middle">Routing off Tokio and replacing copies with Arc did not change the measured ceiling.</text></svg>
